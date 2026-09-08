@@ -1,0 +1,12 @@
+{
+  "name": "大富翁在线 Monopoly Online",
+  "short_name": "大富翁",
+  "description": "经典大富翁网页版，支持联机、机器人和托管",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0a0e27",
+  "theme_color": "#1a1a2e",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

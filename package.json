@@ -1,0 +1,15 @@
+{
+  "name": "monopoly-web",
+  "version": "2.18.0",
+  "description": "大富翁在线 - 经典大富翁网页版（联机 / 机器人 / 托管 / 拍卖 / 两张地图）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node smoke-test.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
