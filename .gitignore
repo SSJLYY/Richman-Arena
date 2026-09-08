@@ -1,4 +1,7 @@
 node_modules/
 data/
+tmp/
+.e2e_data_*/
+.smoke_data*/
 *.log
 .DS_Store
