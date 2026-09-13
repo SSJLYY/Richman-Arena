@@ -176,6 +176,8 @@ const els = {
   roomSettingsRow: $('roomSettingsRow'),
   mapSel: $('mapSel'),
   turnTimeSel: $('turnTimeSel'),
+  teamModeChk: $('teamModeChk'),
+  botSpeedSel: $('botSpeedSel'),
   myStatsLine: $('myStatsLine'),
   moneyFloatLayer: $('moneyFloatLayer'),
   lobbySoloBtn: $('lobbySoloBtn'),
@@ -530,6 +532,8 @@ function setupEventListeners() {
   els.startMoneySel?.addEventListener('change', () => socket.emit('setSettings', { startMoney: Number(els.startMoneySel.value) }));
   els.mapSel?.addEventListener('change', () => socket.emit('setSettings', { map: els.mapSel.value }));
   els.turnTimeSel?.addEventListener('change', () => socket.emit('setSettings', { turnTimeoutMs: Number(els.turnTimeSel.value) }));
+  els.teamModeChk?.addEventListener('change', () => socket.emit('setSettings', { teamMode: els.teamModeChk.checked }));
+  els.botSpeedSel?.addEventListener('change', () => socket.emit('setSettings', { botSpeed: Number(els.botSpeedSel.value) }));
   els.lobbySoloBtn?.addEventListener('click', () => soloQuickStart());
   els.jackpotChk?.addEventListener('change', () => socket.emit('setSettings', { jackpotOn: els.jackpotChk.checked }));
   els.auctionChk?.addEventListener('change', () => socket.emit('setSettings', { auctionOn: els.auctionChk.checked }));
@@ -1151,6 +1155,7 @@ function renderPlayers() {
     const isCurrentTurn = rg.order[rg.turnIndex] === pid && rg.started && !rg.ended;
     const isMe = pid === state.myToken;
     const isHost = pid === state.game.hostToken;
+    const teamChip = p.team ? `<span style="font-size:9px;background:${p.team === 'A' ? '#ff6b6b' : '#4fc3f7'};color:#fff;border-radius:4px;padding:0 4px;margin-left:4px;">${p.team}</span>` : '';
 
     const div = document.createElement('div');
     div.className = `player-item ${isCurrentTurn ? 'active' : ''} ${p.bankrupt ? 'bankrupt' : ''}`;
@@ -1163,7 +1168,7 @@ function renderPlayers() {
     const info = document.createElement('div');
     info.className = 'player-info';
     info.innerHTML = `
-      <div class="player-name" style="color:${playerColor(pid)}">
+      <div class="player-name" style="color:${playerColor(pid)}">${teamChip}
         ${escapeHtml(p.name)}${p.isBot ? ` <span class="bot-tag">BOT${p.botLevel === 'easy' ? '🙂' : p.botLevel === 'hard' ? '😈' : ''}</span>` : ''}
         ${isMe ? ' <span style="color:#4fc3f7">(我)</span>' : ''}${isHost ? ' 👑' : ''}
       </div>
@@ -1223,6 +1228,8 @@ function renderControls() {
     if (els.auctionChk.checked !== !!st.auctionOn) els.auctionChk.checked = !!st.auctionOn;
     if (state.game.mapId && els.mapSel.value !== state.game.mapId) els.mapSel.value = state.game.mapId;
     if (String(st.turnTimeoutMs || 120000) !== els.turnTimeSel.value) els.turnTimeSel.value = String(st.turnTimeoutMs || 120000);
+    if (els.teamModeChk.checked !== !!st.teamMode) els.teamModeChk.checked = !!st.teamMode;
+    if (String(st.botSpeed || 1) !== els.botSpeedSel.value) els.botSpeedSel.value = String(st.botSpeed || 1);
   }
   // 未开局时隐藏一切对局按钮
   // 托管按钮：游戏中且自己存活可用（真人席位）
@@ -1755,7 +1762,8 @@ function openHelp() {
         <p><strong>⏱ 回合上限</strong></p>
         <ul style="margin-left:18px; margin-bottom:10px;">
           <li>房主开局前可设 30/50/80 回合上限，防止拖 endless 局</li>
-          <li>两张地图可选：<b>经典版</b> / <b>中国城市版</b>（北京、上海当深蓝地王）</li>
+          <li>两张地图可选：<b>经典版</b> / <b>中国城市版</b> / <b>武林风云版</b>（经济六折快速局）</li>
+          <li><b>⚔️ 团队模式</b>：2v2 分队（红蓝），队友互免租金，整队存活的获胜；🤖 机器人速度可选快速</li>
           <li>大厅「🤖 单人快速开局」一键建房 + 3机器人 + 开局；可选随机先手</li>
           <li>到上限时<b>净资产最高</b>者获胜（现金+地价）</li>
         </ul>

@@ -232,7 +232,7 @@ function createRoom(id, mapId = 'classic') {
     winnerToken: null,
     proposal: null,        // AI→真人的购地提案 {seq,from,to,cellId,price,expiresAt}
     proposalSeq: 0,
-    settings: { startMoney: 15000, jackpotOn: true, auctionOn: true, turnTimeoutMs: 120000 },
+    settings: { startMoney: 15000, jackpotOn: true, auctionOn: true, turnTimeoutMs: 120000, teamMode: false, botSpeed: 1 },
     nwHistory: [],         // 每轮净资产快照 [{r, v:{token:net}}]
     bank: { houses: 32, hotels: 12 },  // 银行房源（经典规则）
     landingStats: {},      // 掷骰到访次数 {cellId: count}
@@ -398,7 +398,19 @@ function concludeGame(room, alive, winnerId, reasonText) {
 
 function checkEnd(room) {
   const alive = room.order.filter(id => !room.players[id]?.bankrupt);
-  if (alive.length <= 1 && room.started) {
+  if (!room.started) return;
+  if (room.settings.teamMode) {
+    // 团队模式：只剩一支队伍存活 → 该队获胜（ winner 取队内净资产最高者）
+    const teams = [...new Set(alive.map(id => (room.players[id] || {}).team))];
+    if (teams.length <= 1 && alive.length > 0) {
+      const best = alive.slice().sort((a, b) => playerNetWorth(room, b) - playerNetWorth(room, a))[0];
+      concludeGame(room, alive, best, `（${best ? (room.players[best].team || '?') + ' 队获胜' : ''}）`);
+    } else if (alive.length === 0) {
+      concludeGame(room, alive, null);
+    }
+    return;
+  }
+  if (alive.length <= 1) {
     concludeGame(room, alive, alive.length === 1 ? alive[0] : null);
   }
 }
@@ -409,6 +421,15 @@ function checkRoundLimit(room) {
   if (room.roundCount <= room.maxRounds) return;
   const alive = room.order.filter(id => !room.players[id]?.bankrupt);
   if (!alive.length) { concludeGame(room, alive, null); return; }
+  if (room.settings.teamMode) {
+    const sums = {};
+    alive.forEach(id => { const t = room.players[id].team || '?'; sums[t] = (sums[t] || 0) + playerNetWorth(room, id); });
+    const winTeam = Object.entries(sums).sort((a, b) => b[1] - a[1])[0][0];
+    const teamAlive = alive.filter(id => (room.players[id].team || '?') === winTeam);
+    const best = teamAlive.sort((a, b) => playerNetWorth(room, b) - playerNetWorth(room, a))[0];
+    concludeGame(room, alive, best, `（${room.maxRounds} 回合上限已到，${winTeam} 队总净资产获胜）`);
+    return;
+  }
   const best = alive.slice().sort((a, b) => playerNetWorth(room, b) - playerNetWorth(room, a))[0];
   concludeGame(room, alive, best, `（${room.maxRounds} 回合上限已到，净资产最高者获胜）`);
 }
@@ -743,6 +764,10 @@ function landOn(room, player, dice, opts = {}) {
     case 'utility': {
       if (cell.owner && cell.owner !== player.id) {
         const owner = room.players[cell.owner];
+        if (owner && !owner.bankrupt && !cell.mortgaged && room.settings.teamMode && owner.team && owner.team === player.team) {
+          log(room, `🤝 ${player.name} 路过队友 ${owner.name} 的 ${cell.name}，免租通行`);
+          break;
+        }
         if (owner && !owner.bankrupt && !cell.mortgaged) {
           const rent = calcRent(room, cell.id, dice, opts);
           log(room, `💸 ${player.name} 向 ${owner.name} 支付 ${cell.name} 过路费 ¥${rent}`);
@@ -1220,6 +1245,7 @@ function topStats(n = 10) {
 // BOT AI
 // ============================================================
 function botAddTimer(room, fn, delay) {
+  delay = Math.round((delay || 0) * ((room.settings && room.settings.botSpeed) || 1));
   const t = setTimeout(() => {
     if (!rooms[room.id] || rooms[room.id] !== room) return;
     room.botTimers = room.botTimers.filter(x => x !== t);
@@ -1337,6 +1363,7 @@ function maybeBotProposeTrade(room, player) {
   const candidates = room.board.filter(c => {
     if (c.type !== 'city' || !c.group || !c.owner || c.owner === player.id) return false;
     if (c.level > 0) return false; // 带建筑的不提案
+    if (room.settings.teamMode && room.players[c.owner] && room.players[c.owner].team === player.team) return false; // 团队模式不向队友求购
     if (c.proposedTo && c.proposedTo[player.id]) return false;
     const owner = room.players[c.owner];
     if (!owner || owner.isBot || owner.bankrupt || !owner.connected) return false;
@@ -1609,6 +1636,12 @@ io.on('connection', (socket) => {
     room.roundCount = 1;
     room.startedAt = Date.now();
     pushReplaySnapshot(room);
+    if (room.settings.teamMode) {
+      room.order.forEach((id, i) => { const p = room.players[id]; if (p) p.team = i % 2 === 0 ? 'A' : 'B'; });
+      const teamA = room.order.filter(id => room.players[id].team === 'A').map(id => room.players[id].name);
+      const teamB = room.order.filter(id => room.players[id].team === 'B').map(id => room.players[id].name);
+      log(room, `⚔️ 团队模式：🔴 ${teamA.join('、')} vs 🔵 ${teamB.join('、')}（队友互免租金）`);
+    }
     if (room.settings.randomFirst) {
       shuffle(room.order);
       log(room, '🔀 随机先手：' + room.order.map(t => room.players[t]?.name).join(' → '));
@@ -1880,7 +1913,7 @@ io.on('connection', (socket) => {
   });
 
   // ---- 测试钩子（仅 MONOPOLY_TEST=1 时生效）----
-  socket.on('testHook', ({ op, pos, cellId, amount, n }) => {
+  socket.on('testHook', ({ op, pos, cellId, amount, n, target }) => {
     if (process.env.MONOPOLY_TEST !== '1') return;
     const room = rooms[socket.roomId];
     if (!room) return;
@@ -1924,6 +1957,10 @@ io.on('connection', (socket) => {
     } else if (op === 'setBank') {
       const v = Number(n);
       if (Number.isFinite(v)) room.bank.houses = Math.max(0, Math.min(64, v));
+    } else if (op === 'bankrupt') {
+      const bt = target && room.players[target] ? target : token;
+      const bp = room.players[bt];
+      if (bp && !bp.bankrupt) handleBankruptcy(room, bp);
     } else if (op === 'landAs') {
       const p = room.players[token];
       if (p && !p.bankrupt) {
@@ -1953,7 +1990,7 @@ io.on('connection', (socket) => {
   });
 
   // 房间设置（房主，开局前）：起始资金/奖池开关/拍卖开关
-  socket.on('setSettings', ({ startMoney, jackpotOn, auctionOn, map, randomFirst, turnTimeoutMs, password }) => {
+  socket.on('setSettings', ({ startMoney, jackpotOn, auctionOn, map, randomFirst, turnTimeoutMs, password, teamMode, botSpeed }) => {
     const room = rooms[socket.roomId];
     if (!room || room.started || room.ended) return;
     const token = socketToken[socket.id];
@@ -1965,6 +2002,8 @@ io.on('connection', (socket) => {
     if (typeof jackpotOn === 'boolean') room.settings.jackpotOn = jackpotOn;
     if (typeof auctionOn === 'boolean') room.settings.auctionOn = auctionOn;
     if (typeof randomFirst === 'boolean') room.settings.randomFirst = randomFirst;
+    if (typeof teamMode === 'boolean') room.settings.teamMode = teamMode;
+    if (botSpeed !== undefined && [0.4, 1].includes(Number(botSpeed))) room.settings.botSpeed = Number(botSpeed);
     if (password !== undefined) {
       const pwd = String(password).trim().slice(0, 12);
       if (pwd === '') {
@@ -2247,5 +2286,5 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 server.listen(PORT, () => {
-   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.30 服务器已启动 → http://0.0.0.0:${PORT}`);
+   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.32 服务器已启动 → http://0.0.0.0:${PORT}`);
 });

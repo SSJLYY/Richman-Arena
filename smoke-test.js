@@ -532,6 +532,37 @@ function client(url, name) {
   const delta = Math.abs(T.state.players['tok_t1____1'].money - (f1money - 400));
   check('赌坊结算金额正确（±¥360，非NaN）', delta === 360 && Number.isFinite(delta));
   check('赌坊格类型正确（cell36=casino）', T.state.board[36].type === 'casino' && T.state.board[36].name === '赌坊');
+
+  // ── v2.32：团队模式（免租 + 整队获胜）──
+  const teamRoom = 'team_' + Date.now().toString(36);
+  T.socket.emit('join', { roomId: teamRoom, name: 'TM1', token: 'tok_t1____1' });
+  await sleep(400);
+  const TA = client(URL2, 'TA');
+  TA.socket.on('connect', () => TA.socket.emit('join', { roomId: teamRoom, name: 'TA', token: 'tok_ta____a', avatar: '👨' }));
+  const TB = client(URL2, 'TB');
+  TB.socket.on('connect', () => TB.socket.emit('join', { roomId: teamRoom, name: 'TB', token: 'tok_tb____b', avatar: '👩' }));
+  await sleep(700);
+  T.socket.emit('setSettings', { teamMode: true, map: 'wulin' });
+  await sleep(400);
+  T.socket.emit('start');
+  await sleep(400);
+  const teams = { 'tok_t1____1': T.state.players['tok_t1____1'].team, 'tok_ta____a': T.state.players['tok_ta____a'].team, 'tok_tb____b': T.state.players['tok_tb____b'].team };
+  check('队伍交替分配（T=A, TA=B, TB=A）', teams['tok_t1____1'] === 'A' && teams['tok_ta____a'] === 'B' && teams['tok_tb____b'] === 'A');
+  // TB 是 T 的队友（同 A 队）；TA 是对手（B 队）
+  T.socket.emit('testHook', { op: 'setOwner', cellId: 1 });
+  await sleep(250);
+  const tbMoney = T.state.players['tok_tb____b'].money;
+  TB.socket.emit('testHook', { op: 'landAs', pos: 1 });
+  await sleep(400);
+  check('队友路过免租', T.state.players['tok_tb____b'].money === tbMoney);
+  const taMoney = T.state.players['tok_ta____a'].money;
+  TA.socket.emit('testHook', { op: 'landAs', pos: 1 });
+  await sleep(400);
+  check('对手正常付租', T.state.players['tok_ta____a'].money < taMoney);
+  TA.socket.emit('testHook', { op: 'bankrupt', target: 'tok_ta____a' });
+  await sleep(500);
+  check('整队淘汰即结束（A队获胜）', T.state.ended === true && T.state.winnerToken === 'tok_t1____1');
+  TA.socket.close(); TB.socket.close();
   T.socket.close(); T2.socket.close(); T3.socket.close(); T4.socket.close();
   sSock.close();
   console.log(`\n结果: ${passed} 通过, ${failed} 失败`);
