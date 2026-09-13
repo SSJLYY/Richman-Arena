@@ -121,9 +121,23 @@ const CHINA_NAMES = {
   5: '北京南站', 15: '上海虹桥站', 25: '广州南站', 35: '成都东站',
   12: '国家电网', 28: '中国水务',
 };
+const WULIN_NAMES = {
+  1: '丐帮', 3: '少林', 6: '峨眉', 8: '华山', 9: '武当',
+  11: '崆峒', 13: '昆仑', 14: '青城',
+  16: '明教', 18: '日月神教', 19: '逍遥派',
+  21: '大理', 23: '桃花岛', 24: '古墓派',
+  26: '星宿海', 27: '灵鹫宫', 29: '侠客岛',
+  31: '血刀门', 32: '五毒教', 34: '神龙教',
+  37: '移花宫', 39: '魔教总坛',
+  5: '江南镖局', 15: '漕运码头', 25: '塞北马场', 35: '万里镖行',
+  12: '铸剑山庄', 28: '药王谷',
+};
+const scalePrice = (p) => Math.max(100, Math.round((p * 0.6) / 100) * 100);
 const MAPS = {
-  classic: { name: '经典版', cells: BOARD_TEMPLATE },
-  china: { name: '中国城市版', cells: BOARD_TEMPLATE.map(c => CHINA_NAMES[c.id] ? { ...c, name: CHINA_NAMES[c.id] } : c) },
+  classic: { name: '经典版', cells: BOARD_TEMPLATE, rentMul: 1, houseMul: 1 },
+  china: { name: '中国城市版', cells: BOARD_TEMPLATE.map(c => CHINA_NAMES[c.id] ? { ...c, name: CHINA_NAMES[c.id] } : c), rentMul: 1, houseMul: 1 },
+  // 武林风云版：经济全面六折，配合回合上限就是 20 分钟快速局
+  wulin: { name: '武林风云版', cells: BOARD_TEMPLATE.map(c => CHINA_NAMES[c.id] ? { ...c, name: WULIN_NAMES[c.id] || c.name, price: c.price ? scalePrice(c.price) : 0 } : c), rentMul: 0.6, houseMul: 0.6 },
 };
 
 // ============================================================
@@ -194,6 +208,8 @@ function createRoom(id, mapId = 'classic') {
     started: false,
     ended: false,
     board: deepClone(MAPS[mapId] ? MAPS[mapId].cells : BOARD_TEMPLATE),
+    rentMul: MAPS[mapId] ? (MAPS[mapId].rentMul || 1) : 1,
+    houseMul: MAPS[mapId] ? (MAPS[mapId].houseMul || 1) : 1,
     dice: null,
     diceAnim: false,
     doubleCount: 0,
@@ -382,6 +398,8 @@ function getPublicState(room) {
     groups: GROUP_INFO, // 色系租金/建造费单一数据源，前端不再硬编码
     mapId: room.mapId,
     mapName: MAPS[room.mapId] ? MAPS[room.mapId].name : '经典版',
+    rentMul: room.rentMul || 1,
+    houseMul: room.houseMul || 1,
     nwHistory: room.nwHistory.slice(-100),
     bank: room.bank,
     maxRent: room.maxRent,
@@ -489,6 +507,11 @@ function countOwnedInGroup(room, playerId, group) {
   return room.board.filter(c => c.owner === playerId && c.group === group).length;
 }
 
+function houseCostOf(room, cell) {
+  const base = (GROUP_INFO[cell.group] && GROUP_INFO[cell.group].houseCost) || 0;
+  return Math.floor(base * (room.houseMul || 1));
+}
+
 function ownsFullGroup(room, playerId, group) {
   if (!group || group === 'railroad' || group === 'utility') return false;
   const total = BOARD_TEMPLATE.filter(c => c.group === group).length;
@@ -499,24 +522,25 @@ function calcRent(room, cellId, dice = null, { railX2 = false, utilityX10 = fals
   const cell = room.board[cellId];
   const g = cell.group;
   if (!g || cell.owner == null || cell.mortgaged) return 0;
+  const rentMul = room.rentMul || 1;
   if (g === 'railroad') {
     const n = countOwnedInGroup(room, cell.owner, 'railroad');
     let rent = GROUP_INFO.railroad.rents[Math.max(1, n) - 1];
     if (railX2) rent *= 2;
-    return rent;
+    return Math.round(rent * rentMul);
   }
   if (g === 'utility') {
     if (!dice) return 0;
     if (utilityX10) return dice * 100; // "租金10倍"卡
     const n = countOwnedInGroup(room, cell.owner, 'utility');
-    return dice * (n === 2 ? 100 : 40);
+    return Math.round(dice * (n === 2 ? 100 : 40) * rentMul);
   }
   // city: 6级租金表（0空地 .. 5酒店）；空地且集齐全组 → 基础租金×2
   const info = GROUP_INFO[g];
   if (!info) return 0;
   let rent = info.rents[Math.min(cell.level, 5)];
   if (cell.level === 0 && ownsFullGroup(room, cell.owner, g)) rent *= 2;
-  return rent;
+  return Math.round(rent * rentMul);
 }
 
 function canBuild(room, playerId, cell) {
@@ -623,7 +647,7 @@ function botSettleDebt(room) {
     const sellable = p.properties.map(id => room.board[id]).filter(c => c && canSell(room, p.id, c));
     if (!sellable.length) break;
     const c = sellable[0];
-    const refund = Math.floor(GROUP_INFO[c.group].houseCost / 2);
+    const refund = Math.floor(houseCostOf(room, c) / 2);
     if (c.level >= 5) room.bank.hotels += 1;
     else room.bank.houses += 1;
     c.level--;
@@ -1039,7 +1063,7 @@ function saveRoomsNow() {
         board: r.board, dice: r.dice, currentRolled: r.currentRolled,
         roundCount: r.roundCount, turnStartedAt: r.turnStartedAt,
         jackpot: r.jackpot, maxRounds: r.maxRounds || 0, winnerToken: r.winnerToken || null,
-        settings: r.settings, nwHistory: r.nwHistory.slice(-100), bank: r.bank, maxRent: r.maxRent || null, mapId: r.mapId || 'classic', landingStats: r.landingStats || {}, startedAt: r.startedAt || null,
+        settings: r.settings, nwHistory: r.nwHistory.slice(-100), bank: r.bank, maxRent: r.maxRent || null, mapId: r.mapId || 'classic', landingStats: r.landingStats || {}, startedAt: r.startedAt || null, rentMul: r.rentMul || 1, houseMul: r.houseMul || 1,
         logs: r.logs.slice(-60), chats: r.chats.slice(-60),
         chanceOrder: r.chanceDeck.map(c => CHANCE_CARDS.indexOf(c)),
         chestOrder: r.chestDeck.map(c => CHEST_CARDS.indexOf(c)),
@@ -1078,6 +1102,8 @@ function loadRooms() {
       room.mapId = MAPS[s.mapId] ? s.mapId : 'classic';
       room.landingStats = s.landingStats && typeof s.landingStats === 'object' ? s.landingStats : {};
       room.startedAt = s.startedAt || null;
+      room.rentMul = typeof s.rentMul === 'number' ? s.rentMul : 1;
+      room.houseMul = typeof s.houseMul === 'number' ? s.houseMul : 1;
       room.maxRent = s.maxRent || null;
       room.nwHistory = Array.isArray(s.nwHistory) ? s.nwHistory : [];
       room.logs = Array.isArray(s.logs) ? s.logs : [];
@@ -1161,11 +1187,11 @@ function botBuildStep(room, bot) {
     .map(id => room.board[id])
     .filter(c => c && canBuild(room, bot.id, c) && GROUP_INFO[c.group])
     .filter(c => c.level < maxLevel)
-    .filter(c => bot.money - GROUP_INFO[c.group].houseCost >= cashBuffer)
+    .filter(c => bot.money - houseCostOf(room, c) >= cashBuffer)
     .filter(c => (c.level < 4 ? room.bank.houses > 0 : room.bank.hotels > 0));
   if (candidates.length > 0) {
     const cell = candidates[0];
-    const cost = GROUP_INFO[cell.group].houseCost;
+    const cost = houseCostOf(room, cell);
     bot.money -= cost;
     if (cell.level < 4) room.bank.houses -= 1;
     else { room.bank.hotels -= 1; room.bank.houses += 4; }
@@ -1584,7 +1610,7 @@ io.on('connection', (socket) => {
 
     if (action === 'build') {
       if (!canBuild(room, token, cell)) return;
-      const cost = GROUP_INFO[cell.group].houseCost;
+      const cost = houseCostOf(room, cell);
       if (player.money < cost) return safeEmit('msg', `建造需 ¥${cost}，资金不足`) ;
       if (cell.level < 4) {
         if (room.bank.houses < 1) return safeEmit('msg', '🏦 银行房源不足，没有房子可卖了');
@@ -1599,7 +1625,7 @@ io.on('connection', (socket) => {
       log(room, `🏗️ ${player.name} 在 ${cell.name} ${cell.level >= 5 ? '建成酒店' : '建造第 ' + cell.level + ' 栋房'}（¥${cost}）`);
     } else if (action === 'sell') {
       if (!canSell(room, token, cell)) return;
-      const refund = Math.floor(GROUP_INFO[cell.group].houseCost / 2);
+      const refund = Math.floor(houseCostOf(room, cell) / 2);
       player.money += refund;
       if (cell.level >= 5) room.bank.hotels += 1;
       else room.bank.houses += 1;
@@ -1851,6 +1877,8 @@ io.on('connection', (socket) => {
     if (map !== undefined && MAPS[String(map)] && room.mapId !== String(map)) {
       room.mapId = String(map);
       room.board = deepClone(MAPS[room.mapId].cells);
+      room.rentMul = MAPS[room.mapId].rentMul || 1;
+      room.houseMul = MAPS[room.mapId].houseMul || 1;
     }
     log(room, `⚙️ 房主更新设置：${MAPS[room.mapId].name} · 起始 ¥${room.settings.startMoney} · 奖池${room.settings.jackpotOn ? '开' : '关'} · 拍卖${room.settings.auctionOn ? '开' : '关'}${room.settings.randomFirst ? ' · 随机先手' : ''}`);
     broadcast(room.id);
@@ -2080,5 +2108,5 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 server.listen(PORT, () => {
-   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.23 服务器已启动 → http://0.0.0.0:${PORT}`);
+   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.24 服务器已启动 → http://0.0.0.0:${PORT}`);
 });

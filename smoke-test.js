@@ -189,6 +189,16 @@ function client(url, name) {
   T.socket.emit('setSettings', { turnTimeoutMs: 120000 });
   await sleep(300);
   check('回合限时恢复（120秒）', T.state.settings.turnTimeoutMs === 120000);
+
+  // ── v2.24：武林风云版（经济六折快速图）──
+  T.socket.emit('setSettings', { map: 'wulin' });
+  await sleep(300);
+  check('武林风云版生效（cell1=丐帮，¥400）', T.state.mapId === 'wulin' && T.state.board[1].name === '丐帮' && T.state.board[1].price === 400);
+  check('倍率下发（租金/建造 0.6）', T.state.rentMul === 0.6 && T.state.houseMul === 0.6);
+  // 切回中国城市版，保证后续流程断言沿用原有数值
+  T.socket.emit('setSettings', { map: 'china' });
+  await sleep(300);
+  check('切回中国城市版', T.state.mapId === 'china' && T.state.board[1].name === '兰州');
   check('中国城市版地图生效（cell1=兰州）', T.state.mapId === 'china' && T.state.board[1].name === '兰州' && T.state.board[39].name === '北京');
   check('两版地图结构一致（40格/组别数）', T.state.board.length === 40 && T.state.board.filter(c => c.group === 'brown').length === 2);
   check('默认开关：奖池开/拍卖开', T.state.settings.jackpotOn === true && T.state.settings.auctionOn === true);

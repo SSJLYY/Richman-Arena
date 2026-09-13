@@ -23,6 +23,10 @@ const GROUP_META = {
   utility:  { name: '公用', color: '#8E44AD', houseCost: 0, rents: [] },
 };
 
+function rentMul() {
+  return (state.game && state.game.rentMul) || 1;
+}
+
 const state = {
   game: null,
   myId: null,
@@ -897,9 +901,9 @@ function openPropertyModal(cellId) {
   if (meta && cell.type === 'city' && meta.rents.length >= 6) {
     const ownsAll = state.game.board.filter(c => c.group === cell.group).every(c => c.owner === cell.owner && cell.owner);
     rentInfo = `
-      <p><strong>租金表：</strong>空地 ¥${meta.rents[0].toLocaleString()}${ownsAll && cell.owner ? '（集齐全组 ×2 = ¥' + (meta.rents[0] * 2).toLocaleString() + '）' : ''}</p>
-      <p style="padding-left:12px;">🏠1房 ¥${meta.rents[1].toLocaleString()} · 🏠2房 ¥${meta.rents[2].toLocaleString()} · 🏠3房 ¥${meta.rents[3].toLocaleString()} · 🏠4房 ¥${meta.rents[4].toLocaleString()} · 🏨酒店 ¥${meta.rents[5].toLocaleString()}</p>
-      <p><strong>每级建造费：</strong>¥${meta.houseCost.toLocaleString()}（出售退一半）</p>
+      <p><strong>租金表：</strong>空地 ¥${Math.round(meta.rents[0] * rentMul()).toLocaleString()}${ownsAll && cell.owner ? '（集齐全组 ×2 = ¥' + (meta.rents[0] * 2).toLocaleString() + '）' : ''}</p>
+      <p style="padding-left:12px;">🏠1房 ¥${Math.round(meta.rents[1] * rentMul()).toLocaleString()} · 🏠2房 ¥${Math.round(meta.rents[2] * rentMul()).toLocaleString()} · 🏠3房 ¥${Math.round(meta.rents[3] * rentMul()).toLocaleString()} · 🏠4房 ¥${Math.round(meta.rents[4] * rentMul()).toLocaleString()} · 🏨酒店 ¥${Math.round(meta.rents[5] * rentMul()).toLocaleString()}</p>
+      <p><strong>每级建造费：</strong>¥${Math.floor(meta.houseCost * ((state.game && state.game.houseMul) || 1)).toLocaleString()}（出售退一半）</p>
     `;
   } else if (cell.group === 'railroad') {
     rentInfo = `<p><strong>租金：</strong>拥有 1/2/3/4 条铁路 → ¥250 / ¥500 / ¥1000 / ¥2000</p>`;
@@ -967,7 +971,7 @@ function toggleBuildMode() {
   buildable.forEach(id => {
     const c = state.game.board[id];
     const meta = GROUP_META[c.group];
-    const cost = meta ? meta.houseCost : 0;
+    const cost = meta ? Math.floor(meta.houseCost * ((state.game && state.game.houseMul) || 1)) : 0;
     const now = c.level >= 5 ? '🏨' : (c.level ? '🏠'.repeat(c.level) : '空地');
     const next = c.level >= 4 ? '🏨酒店' : '🏠'.repeat(c.level + 1);
     const afford = me.money >= cost;
@@ -2168,7 +2172,7 @@ function renderAuction() {
   if (els.apRent) {
     const meta = cell.group ? GROUP_META[cell.group] : null;
     let rentTxt = '';
-    if (cell.type === 'city' && meta) rentTxt = `租金：空地 ¥${meta.rents[0].toLocaleString()} → 🏨 ¥${meta.rents[5].toLocaleString()}（每级建造 ¥${meta.houseCost.toLocaleString()}）`;
+    if (cell.type === 'city' && meta) rentTxt = `租金：空地 ¥${Math.round(meta.rents[0] * rentMul()).toLocaleString()} → 🏨 ¥${Math.round(meta.rents[5] * rentMul()).toLocaleString()}（每级建造 ¥${Math.floor(meta.houseCost * ((state.game && state.game.houseMul) || 1)).toLocaleString()}）`;
     else if (cell.type === 'railroad') rentTxt = '租金：¥250 → ¥2000（按持有铁路数）';
     else if (cell.type === 'utility') rentTxt = '租金：骰子点数 ×40 / ×100';
     els.apRent.textContent = rentTxt;
