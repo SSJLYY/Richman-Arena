@@ -1457,11 +1457,18 @@ function renderLog() {
   els.log.innerHTML = '';
 
   const combined = [];
-  state.game.chats.forEach(c => combined.push({ ...c, type: c.from === '系统' ? 'system' : 'chat' }));
-  state.game.logs.forEach(l => combined.push({ ...l, type: 'game' }));
+  // 回放模式：只显示该帧之前的历史日志（并隐藏实时聊天）
+  if (state.replayIdx !== null && state.game.replay && state.game.replay.length) {
+    const snap = state.game.replay[Math.min(state.replayIdx, state.game.replay.length - 1)];
+    state.game.logs.slice(0, snap ? snap.lg : undefined).forEach(l => combined.push({ ...l, type: 'game' }));
+  } else {
+    state.game.chats.forEach(c => combined.push({ ...c, type: c.from === '系统' ? 'system' : 'chat' }));
+    state.game.logs.forEach(l => combined.push({ ...l, type: 'game' }));
+  }
   combined.sort((a, b) => (a.ts || 0) - (b.ts || 0));
 
-  const filtered = state.logFilter === 'all' ? combined : combined.filter(e => e.type === state.logFilter);
+  let filtered = state.logFilter === 'all' ? combined : combined.filter(e => e.type === state.logFilter);
+  if (state.replayIdx !== null) filtered = filtered.filter(e => e.type === 'game');
 
   filtered.slice(-60).reverse().forEach(item => {
     const p = document.createElement('p');
@@ -2043,16 +2050,22 @@ function openReplay() {
   banner.className = 'replay-banner';
   banner.innerHTML = `
     <span>🎥 对局回放 · 第 <b id="rpRound">${snaps[state.replayIdx].r}</b> 轮 / 共 ${snaps.length} 帧</span>
+    <button class="btn btn-sm btn-ghost" id="rpPrev" title="上一轮">◀</button>
     <input type="range" id="rpSlider" min="0" max="${snaps.length - 1}" value="${state.replayIdx}" style="flex:1;" />
+    <button class="btn btn-sm btn-ghost" id="rpNext" title="下一轮">▶</button>
     <button class="btn btn-sm btn-secondary" id="rpExit">退出回放</button>`;
   const section = document.querySelector('.board-section');
   if (section) section.insertBefore(banner, section.firstChild);
-  const slider = document.getElementById('rpSlider');
-  slider.addEventListener('input', () => {
-    state.replayIdx = Number(slider.value);
+  const gotoFrame = (idx) => {
+    state.replayIdx = Math.max(0, Math.min(snaps.length - 1, idx));
+    slider.value = String(state.replayIdx);
     document.getElementById('rpRound').textContent = snaps[state.replayIdx].r;
     render();
-  });
+  };
+  const slider = document.getElementById('rpSlider');
+  slider.addEventListener('input', () => gotoFrame(Number(slider.value)));
+  document.getElementById('rpPrev').addEventListener('click', () => gotoFrame(state.replayIdx - 1));
+  document.getElementById('rpNext').addEventListener('click', () => gotoFrame(state.replayIdx + 1));
   document.getElementById('rpExit').addEventListener('click', exitReplay);
 }
 
