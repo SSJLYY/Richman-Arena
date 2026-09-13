@@ -447,6 +447,15 @@ function client(url, name) {
   check('重启后结束状态与胜者保留', T3.state && T3.state.ended === true && T3.state.winnerToken === 'tok_t2____2');
   check('重启后净资产历史保留', T3.state && Array.isArray(T3.state.nwHistory) && T3.state.nwHistory.length >= 2);
   check('重启后回放快照保留', T3.state && Array.isArray(T3.state.replay) && T3.state.replay.length >= 2);
+
+  // ── v2.29：历史对局档案（直接读测试实例的 history.json）──
+  try {
+    const hist = JSON.parse(require('fs').readFileSync(DATA_DIR2 + '/history.json', 'utf8'));
+    check('历史对局档案写入（≥1条，胜者=T2）', Array.isArray(hist) && hist.length >= 1 && hist[0].winner === 'T2' && hist[0].rounds >= 2);
+  } catch (e) {
+    check('历史对局档案写入（≥1条，胜者=T2）', false);
+  }
+
   check('重启后落地热度保留', T3.state && T3.state.landingStats && Object.keys(T3.state.landingStats).length >= 1);
   check('重启后房间设置保留', T3.state && T3.state.settings && T3.state.settings.startMoney === 20000);
   // ── v2.25/2.26：自动购买 + 赌坊（独立房间、轮询自愈，放最后避免干扰流程）──

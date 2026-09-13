@@ -371,6 +371,20 @@ function concludeGame(room, alive, winnerId, reasonText) {
     s.bestNet = Math.max(s.bestNet, playerNetWorth(room, id));
   });
   saveStats();
+  // 历史对局档案（保留最近 20 条）
+  recentGames.push({
+    date: new Date().toISOString(),
+    map: room.mapId,
+    rounds: room.roundCount,
+    winner: winnerId ? (room.players[winnerId] ? room.players[winnerId].name : null) : null,
+    reason: reasonText || '淘汰制',
+    players: room.order.map(id => { const p = room.players[id]; return p ? p.name : '?'; }),
+  });
+  if (recentGames.length > 20) recentGames = recentGames.slice(-20);
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(recentGames));
+  } catch (e) {}
   clearBotTimers(room);
   io.emit('roomList', roomList());
 }
@@ -1078,7 +1092,7 @@ function endHumanTurn(room, player) {
 // ============================================================
 // 战绩持久化（大厅排行榜）
 // ============================================================
-const DATA_DIR = path.join(__dirname, process.env.MONOPOLY_DATA_DIR || 'data');
+const DATA_DIR = path.resolve(__dirname, process.env.MONOPOLY_DATA_DIR || 'data');
 const BACKUP_DIR = path.join(DATA_DIR, 'backup');
 let lastBackupDay = '';
 function backupData() {
@@ -1173,11 +1187,15 @@ function loadRooms() {
 }
 const STATS_FILE = path.join(DATA_DIR, 'stats.json');
 let stats = {};
+const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
+let recentGames = [];
+try { recentGames = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')); } catch (e) { recentGames = []; }
 try { stats = JSON.parse(fs.readFileSync(STATS_FILE, 'utf8')); } catch (e) { stats = {}; }
 function saveStats() {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(STATS_FILE, JSON.stringify(stats));
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(recentGames));
   } catch (e) {}
 }
 function topStats(n = 10) {
@@ -1841,7 +1859,7 @@ io.on('connection', (socket) => {
   socket.on('getStats', ({ name } = {}) => {
     const n = String(name || '').slice(0, 16);
     const mine = n && stats[n] ? { name: n, games: stats[n].games, wins: stats[n].wins, bestNet: stats[n].bestNet } : null;
-    safeEmit('stats', { top: topStats(), mine });
+    safeEmit('stats', { top: topStats(), mine, recent: recentGames.slice(-8).reverse() });
   });
 
   // ---- 测试钩子（仅 MONOPOLY_TEST=1 时生效）----
@@ -2212,5 +2230,5 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 server.listen(PORT, () => {
-   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.28 服务器已启动 → http://0.0.0.0:${PORT}`);
+   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.29 服务器已启动 → http://0.0.0.0:${PORT}`);
 });
