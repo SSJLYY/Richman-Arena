@@ -447,7 +447,27 @@ function client(url, name) {
   check('重启后净资产历史保留', T3.state && Array.isArray(T3.state.nwHistory) && T3.state.nwHistory.length >= 2);
   check('重启后落地热度保留', T3.state && T3.state.landingStats && Object.keys(T3.state.landingStats).length >= 1);
   check('重启后房间设置保留', T3.state && T3.state.settings && T3.state.settings.startMoney === 20000);
-  T.socket.close(); T2.socket.close(); T3.socket.close();
+  // ── v2.25：自动购买（独立房间，放最后避免干扰流程）──
+  const fantRoom = 'fant_' + Date.now().toString(36);
+  T.socket.emit('join', { roomId: fantRoom, name: 'F1', token: 'tok_t1____1' });
+  await sleep(400);
+  const T4 = client(URL2, 'F2');
+  T4.socket.on('connect', () => T4.socket.emit('join', { roomId: fantRoom, name: 'F2', token: 'tok_t4____4', avatar: '👩' }));
+  await sleep(600);
+  T.socket.emit('setSettings', { map: 'wulin' });
+  await sleep(300);
+  T.socket.emit('start');
+  await sleep(400);
+  T.socket.emit('setAutoBuy', { on: true });
+  await sleep(300);
+  check('自动购买开关生效', T.state.players['tok_t1____1'].autoBuy === true);
+  const f1money = T.state.players['tok_t1____1'].money;
+  T.socket.emit('testHook', { op: 'teleport', pos: 1 }); // 丐帮（无主 ¥400）
+  await sleep(300);
+  T.socket.emit('testHook', { op: 'resolve', pos: 1 });
+  await sleep(500);
+  check('自动购买落地即买（丐帮 ¥400）', T.state.board[1].owner === 'tok_t1____1' && T.state.players['tok_t1____1'].money === f1money - 400);
+  T.socket.close(); T2.socket.close(); T3.socket.close(); T4.socket.close();
   sSock.close();
   proc2.kill();
   await sleep(300);

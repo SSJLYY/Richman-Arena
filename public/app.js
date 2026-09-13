@@ -290,6 +290,13 @@ function init() {
     if (state.view !== 'game') return;
     updateTurnTimer();
     if (state.game?.auction) renderAuction();
+    // 交易提议倒计时
+    const cdEl = document.getElementById('tradeCd');
+    if (cdEl) {
+      const t = state.game && state.game.trade;
+      if (t) cdEl.textContent = String(Math.max(0, Math.ceil((t.expiresAt - Date.now()) / 1000)));
+      else cdEl.textContent = '0';
+    }
     // 本局用时每秒走字
     const bcRound = document.querySelector('.bc-round');
     if (bcRound && state.game && state.game.startedAt && !state.game.ended) {
@@ -1608,6 +1615,10 @@ function openSettings() {
         <label>音效</label>
         <label class="toggle"><input type="checkbox" id="soundInput" ${Sound.enabled ? 'checked' : ''}><span class="slider"></span></label>
       </div>
+      <div class="setting-item">
+        <label>自动购买（落地即买下可负担的无主地产）</label>
+        <label class="toggle"><input type="checkbox" id="autoBuyInput" ${(state.game && state.game.players[state.myToken] && state.game.players[state.myToken].autoBuy) ? 'checked' : ''}><span class="slider"></span></label>
+      </div>
       <p style="font-size:12px;color:var(--text-tertiary);margin-top:8px;">昵称/头像在下一局开始时生效；如需换房间请返回大厅。</p>
     `,
     `
@@ -1621,12 +1632,14 @@ window.saveSettings = function() {
   const name = document.getElementById('nameInput')?.value?.trim();
   const avatar = document.getElementById('avatarInput')?.value;
   const soundOn = document.getElementById('soundInput')?.checked;
+  const autoBuyOn = document.getElementById('autoBuyInput')?.checked;
   if (name) localStorage.setItem('monopoly_name', name.slice(0, 16));
   if (avatar) localStorage.setItem('monopoly_avatar', avatar);
   if (typeof soundOn === 'boolean') {
     Sound.enabled = soundOn;
     localStorage.setItem('monopoly_sound', soundOn ? 'on' : 'off');
   }
+  if (typeof autoBuyOn === 'boolean') socket.emit('setAutoBuy', { on: autoBuyOn });
   if (els.lobbyName) els.lobbyName.value = name || '';
   state.selectedAvatar = avatar || state.selectedAvatar;
   renderAvatarGrid();
@@ -2085,7 +2098,7 @@ function maybeShowTrade() {
          <p>📦 TA 给你：现金 <b style="color:var(--accent-success);">¥${(t.giveMoney || 0).toLocaleString()}</b> ｜ 地产：${fmt(t.giveProps)}</p>
          <p>💸 TA 想要：现金 <b style="color:var(--accent-danger);">¥${(t.getMoney || 0).toLocaleString()}</b> ｜ 地产：${fmt(t.getProps)}</p>
        </div>
-       <p style="font-size:12px;color:var(--text-tertiary);">30 秒内不回应将自动取消</p>`,
+       <p style="font-size:12px;color:var(--text-tertiary);">剩余 <b id="tradeCd">30</b> 秒，超时自动取消</p>`,
       `<button class="btn btn-primary" onclick="answerTrade(${t.seq}, true)">✅ 接受</button>
        <button class="btn btn-secondary" onclick="answerTrade(${t.seq}, false)">❌ 拒绝</button>`
     );

@@ -251,6 +251,7 @@ function createPlayer(name, token, { isBot = false, avatar } = {}) {
     jailTurns: 0, bankrupt: false, properties: [],
     jailFreeCards: 0,
     rentEarned: 0,         // 累计租金收入
+    autoBuy: false,        // 落地自动购买（个人偏好）
     rentPaid: 0,           // 累计租金支出
     avatar: avatar || PLAYER_AVATARS[Math.floor(Math.random() * PLAYER_AVATARS.length)],
     isBot,
@@ -707,8 +708,17 @@ function landOn(room, player, dice, opts = {}) {
           charge(room, player, rent, 'rent', cell.owner);
         }
       } else if (!cell.owner && !player.bankrupt) {
-        // 无主地产：机器人/托管玩家按 AI 策略立即购买，真人显示购买按钮
-        if (player.isBot || player.delegated) botTryBuy(room, player);
+        // 无主地产：机器人/托管玩家按 AI 策略立即购买；真人开了自动购买也直接买
+        if (player.isBot || player.delegated) {
+          botTryBuy(room, player);
+        } else if (player.autoBuy && player.money >= cell.price + 200) {
+          player.money -= cell.price;
+          cell.owner = player.id;
+          cell.level = 0;
+          cell.mortgaged = false;
+          player.properties.push(cell.id);
+          log(room, `🤖 ${player.name} 自动购买了 ${cell.name}（¥${cell.price}）`);
+        }
       }
       break;
     }
@@ -1923,6 +1933,18 @@ io.on('connection', (socket) => {
     scheduleAIIfAny(room);
   });
 
+  // 自动购买开关（个人偏好，随时可切）
+  socket.on('setAutoBuy', ({ on }) => {
+    const room = rooms[socket.roomId];
+    if (!room) return;
+    const token = socketToken[socket.id];
+    const player = room.players[token];
+    if (!player || player.isBot) return;
+    player.autoBuy = !!on;
+    log(room, `🛒 ${player.name} ${on ? '开启' : '关闭'}了自动购买`);
+    broadcast(room.id);
+  });
+
   // 托管开关：开启后 AI 替该玩家行动（掷骰/买地/盖房/保释/结束回合）
   socket.on('toggleDelegation', () => {
     const room = rooms[socket.roomId];
@@ -2108,5 +2130,5 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 server.listen(PORT, () => {
-   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.24 服务器已启动 → http://0.0.0.0:${PORT}`);
+   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.25 服务器已启动 → http://0.0.0.0:${PORT}`);
 });
