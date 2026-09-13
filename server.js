@@ -982,6 +982,7 @@ function resolveAuction(room) {
     cell.mortgaged = false;
     winner.properties.push(cell.id);
     log(room, `🔨 ${winner.name} 以 ¥${a.topBid} 拍得「${cell.name}」！`);
+    room.lastRentPaid = { cellId: cell.id, amount: a.topBid, ts: Date.now() };
     if (winner.isBot) botSay(room, winner, 'winAuc', 0.4);
   } else {
     log(room, `🔨 「${cell.name}」无人出价，流拍`);
@@ -2079,5 +2080,5 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 server.listen(PORT, () => {
-   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.22 服务器已启动 → http://0.0.0.0:${PORT}`);
+   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.23 服务器已启动 → http://0.0.0.0:${PORT}`);
 });

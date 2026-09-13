@@ -695,6 +695,7 @@ function renderBoard() {
 
     if (state.flashCells && state.flashCells.includes(cell.id)) div.classList.add('cell-flash');
     if (state.goldCells && state.goldCells.includes(cell.id)) div.classList.add('cell-gold');
+    if (state.game.auction && state.game.auction.cellId === cell.id) div.classList.add('cell-auction');
     if (cell.group && monopolies[cell.group]) {
       div.classList.add('monopoly-cell');
       div.style.setProperty('--mono-color', playerColor(monopolies[cell.group]));
@@ -1092,7 +1093,11 @@ function statusLine(p, isMe) {
 function renderPlayers() {
   if (!state.game) return;
   els.playersList.innerHTML = '';
-  state.game.order.forEach(pid => {
+  const ordered = [...state.game.order].sort((a, b) => {
+    const pa = state.game.players[a], pb = state.game.players[b];
+    return (pa && pa.bankrupt ? 1 : 0) - (pb && pb.bankrupt ? 1 : 0);
+  });
+  ordered.forEach(pid => {
     const p = state.game.players[pid];
     if (!p) return;
     const isCurrentTurn = state.game.order[state.game.turnIndex] === pid && state.game.started && !state.game.ended;

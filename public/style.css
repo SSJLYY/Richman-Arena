@@ -1142,3 +1142,11 @@ tr.ov-group td { font-weight: 800; color: var(--text-secondary); background: var
   color: var(--text-primary);
   margin-bottom: 8px;
 }
+
+
+/* v2.23: auctioned cell pulse */
+.cell-auction { animation: cellAuctionPulse 1.2s infinite; z-index: 4; }
+@keyframes cellAuctionPulse {
+  0%, 100% { box-shadow: 0 0 0 2px #ff9800, 0 0 10px 2px rgba(255, 152, 0, 0.5); }
+  50% { box-shadow: 0 0 0 2px #ff9800, 0 0 18px 6px rgba(255, 152, 0, 0.85); }
+}

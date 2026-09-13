@@ -242,6 +242,7 @@ function client(url, name) {
   check('T2 扣款 ¥600', T.state.players['tok_t2____2'].money === t2m - 600);
   check('T1 未扣款', T.state.players['tok_t1____1'].money === t1m);
   check('拍卖已清空', T.state.auction === null);
+  check('拍卖成交地块金光事件（cell1 ¥600）', T.state.lastRentPaid && T.state.lastRentPaid.cellId === 1 && T.state.lastRentPaid.amount === 600);
 
   // 低价/不足步进出价必须被拒（v2.18：起拍 ¥100，此后必须整步 +100）
   T.socket.emit('testHook', { op: 'auction', cellId: 3 });
