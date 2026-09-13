@@ -652,7 +652,7 @@ function renderBoard() {
     }
 
     // Icon for special cells
-    const ICONS = { go:'🏁', jail:'🔒', parking:'🅿️', gotojail:'🚔', chance:'❓', chest:'📦', tax:'🏛️', railroad:'🚂', utility:'💡' };
+    const ICONS = { go:'🏁', jail:'🔒', parking:'🅿️', gotojail:'🚔', chance:'❓', chest:'📦', tax:'🏛️', railroad:'🚂', utility:'💡', casino:'🎰' };
     if (ICONS[cell.type] && cell.type !== 'city') {
       const icon = document.createElement('div');
       icon.className = 'cell-icon';
@@ -665,6 +665,13 @@ function renderBoard() {
     nameEl.className = 'cell-name';
     nameEl.textContent = cell.name;
     div.appendChild(nameEl);
+
+    if (cell.type === 'casino') {
+      const sub = document.createElement('div');
+      sub.className = 'cell-price';
+      sub.textContent = '赌一把';
+      div.appendChild(sub);
+    }
 
     // Price
     if (cell.price > 0) {

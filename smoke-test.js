@@ -447,32 +447,56 @@ function client(url, name) {
   check('重启后净资产历史保留', T3.state && Array.isArray(T3.state.nwHistory) && T3.state.nwHistory.length >= 2);
   check('重启后落地热度保留', T3.state && T3.state.landingStats && Object.keys(T3.state.landingStats).length >= 1);
   check('重启后房间设置保留', T3.state && T3.state.settings && T3.state.settings.startMoney === 20000);
-  // ── v2.25：自动购买（独立房间，放最后避免干扰流程）──
+  // ── v2.25/2.26：自动购买 + 赌坊（独立房间、轮询自愈，放最后避免干扰流程）──
   const fantRoom = 'fant_' + Date.now().toString(36);
+  const waitCond = async (fn, tries = 15, step = 250) => {
+    for (let i = 0; i < tries; i++) { if (fn()) return true; await sleep(step); }
+    return !!fn();
+  };
   T.socket.emit('join', { roomId: fantRoom, name: 'F1', token: 'tok_t1____1' });
-  await sleep(400);
+  let ok = await waitCond(() => T.state && T.state.id === fantRoom);
+  if (!ok) T.socket.emit('join', { roomId: fantRoom, name: 'F1', token: 'tok_t1____1' });
+  ok = await waitCond(() => T.state && T.state.id === fantRoom);
+  check('独立房间就绪', ok);
+
   const T4 = client(URL2, 'F2');
   T4.socket.on('connect', () => T4.socket.emit('join', { roomId: fantRoom, name: 'F2', token: 'tok_t4____4', avatar: '👩' }));
-  await sleep(600);
+  await waitCond(() => T.state && T.state.order && T.state.order.length === 2);
+
   T.socket.emit('setSettings', { map: 'wulin' });
-  await sleep(300);
+  ok = await waitCond(() => T.state && T.state.mapId === 'wulin' && T.state.board[36].type === 'casino');
+  if (!ok) T.socket.emit('setSettings', { map: 'wulin' });
+  ok = await waitCond(() => T.state && T.state.mapId === 'wulin' && T.state.board[36].type === 'casino');
+  check('武林图与赌坊格就绪', ok);
+
   T.socket.emit('start');
-  await sleep(400);
+  ok = await waitCond(() => T.state && T.state.started, 12, 300);
+  if (!ok) T.socket.emit('start');
+  ok = await waitCond(() => T.state && T.state.started, 12, 300);
+  check('独立房间开局', ok);
+
   T.socket.emit('setAutoBuy', { on: true });
-  await sleep(300);
-  check('自动购买开关生效', T.state.players['tok_t1____1'].autoBuy === true);
+  ok = await waitCond(() => T.state.players['tok_t1____1'] && T.state.players['tok_t1____1'].autoBuy === true);
+  check('自动购买开关生效', ok);
+
   const f1money = T.state.players['tok_t1____1'].money;
-  T.socket.emit('testHook', { op: 'teleport', pos: 1 }); // 丐帮（无主 ¥400）
-  await sleep(300);
+  T.socket.emit('testHook', { op: 'teleport', pos: 1 });
+  await sleep(250);
   T.socket.emit('testHook', { op: 'resolve', pos: 1 });
-  await sleep(500);
-  check('自动购买落地即买（丐帮 ¥400）', T.state.board[1].owner === 'tok_t1____1' && T.state.players['tok_t1____1'].money === f1money - 400);
+  ok = await waitCond(() => T.state.board[1].owner === 'tok_t1____1');
+  check('自动购买落地即买（丐帮 ¥400）', ok && T.state.players['tok_t1____1'].money === f1money - 400);
+
+  // ── v2.26：赌坊（五五开 ±¥360）──
+  T.socket.emit('testHook', { op: 'teleport', pos: 36 });
+  await sleep(250);
+  T.socket.emit('testHook', { op: 'resolve', pos: 36 });
+  const f1m1 = T.state.players['tok_t1____1'].money;
+  ok = await waitCond(() => Math.abs(T.state.players['tok_t1____1'].money - (f1money - 400)) === 360, 10, 200);
+  const delta = Math.abs(T.state.players['tok_t1____1'].money - (f1money - 400));
+  check('赌坊结算金额正确（±¥360，非NaN）', delta === 360 && Number.isFinite(delta));
+  check('赌坊格类型正确（cell36=casino）', T.state.board[36].type === 'casino' && T.state.board[36].name === '赌坊');
   T.socket.close(); T2.socket.close(); T3.socket.close(); T4.socket.close();
   sSock.close();
-  proc2.kill();
-  await sleep(300);
-
-  cleanupProcs();
   console.log(`\n结果: ${passed} 通过, ${failed} 失败`);
   process.exit(failed > 0 ? 1 : 0);
 })().catch(e => { if (typeof cleanupProcs === 'function') cleanupProcs(); console.error('测试异常:', e); process.exit(1); });

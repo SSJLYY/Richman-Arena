@@ -1150,3 +1150,8 @@ tr.ov-group td { font-weight: 800; color: var(--text-secondary); background: var
   0%, 100% { box-shadow: 0 0 0 2px #ff9800, 0 0 10px 2px rgba(255, 152, 0, 0.5); }
   50% { box-shadow: 0 0 0 2px #ff9800, 0 0 18px 6px rgba(255, 152, 0, 0.85); }
 }
+
+
+/* v2.26: casino cell */
+.cell.casino { background: #f8e9f7; }
+.cell.casino .cell-icon { font-size: 13px; }

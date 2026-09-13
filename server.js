@@ -137,7 +137,15 @@ const MAPS = {
   classic: { name: '经典版', cells: BOARD_TEMPLATE, rentMul: 1, houseMul: 1 },
   china: { name: '中国城市版', cells: BOARD_TEMPLATE.map(c => CHINA_NAMES[c.id] ? { ...c, name: CHINA_NAMES[c.id] } : c), rentMul: 1, houseMul: 1 },
   // 武林风云版：经济全面六折，配合回合上限就是 20 分钟快速局
-  wulin: { name: '武林风云版', cells: BOARD_TEMPLATE.map(c => CHINA_NAMES[c.id] ? { ...c, name: WULIN_NAMES[c.id] || c.name, price: c.price ? scalePrice(c.price) : 0 } : c), rentMul: 0.6, houseMul: 0.6 },
+  wulin: {
+    name: '武林风云版',
+    cells: BOARD_TEMPLATE.map(c => {
+      const base = CHINA_NAMES[c.id] ? { ...c, name: WULIN_NAMES[c.id] || c.name, price: c.price ? scalePrice(c.price) : 0 } : c;
+      if (c.id === 36) return { ...base, type: 'casino', name: '赌坊', chance: undefined }; // 武林图专属：赌坊
+      return base;
+    }),
+    rentMul: 0.6, houseMul: 0.6,
+  },
 };
 
 // ============================================================
@@ -389,6 +397,7 @@ function getPublicState(room) {
     auction: room.auction ? {
       no: room.auction.no, cellId: room.auction.cellId,
       topBid: room.auction.topBid, topBidder: room.auction.topBidder,
+      initiator: room.auction.initiator,
       bids: room.auction.bids.slice(-5),
       endsAt: room.auction.endsAt,
     } : null,
@@ -766,6 +775,16 @@ function landOn(room, player, dice, opts = {}) {
       break;
     }
 
+    case 'casino': {
+      const stake = Math.round(600 * (room.rentMul || 1));
+      const win = Math.random() < 0.5;
+      const amount = Math.min(stake, Math.max(0, player.money));
+      player.money += win ? amount : -amount;
+      log(room, `🎰 ${player.name} 在赌坊${win ? '赢了' : '输了'} ¥${amount}${amount === 0 ? '（身无分文，庄家免单）' : ''}`);
+      if (player.isBot) botSay(room, player, win ? 'rentGet' : 'rentPay', 0.3);
+      break;
+    }
+
     case 'parking':
       if (room.jackpot > 0) {
         player.money += room.jackpot;
@@ -909,6 +928,7 @@ function startAuction(room, cellId, initiatorName) {
     cellId,
     topBid: 0,
     topBidder: null,
+    initiator: initiatorName,
     bids: [],
     chains: {},
     startedAt: Date.now(),
@@ -2130,5 +2150,5 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 server.listen(PORT, () => {
-   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.25 服务器已启动 → http://0.0.0.0:${PORT}`);
+   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.26 服务器已启动 → http://0.0.0.0:${PORT}`);
 });
