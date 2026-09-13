@@ -63,7 +63,9 @@ const Sound = {
     if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
     return this.ctx;
   },
+  volume: Number(localStorage.getItem('monopoly_volume') || 70),
   play(notes, vol = 0.1) {
+    vol = vol * (this.volume / 100);
     if (!this.enabled) return;
     const ctx = this.ensure();
     if (!ctx) return;
@@ -1378,6 +1380,10 @@ function showVictoryStats(winnerToken) {
   const mr = state.game.maxRent;
   const elapsedHtml = state.game.startedAt ? `<p style="text-align:center;font-size:12px;color:var(--text-tertiary);margin-bottom:10px;">⏱ 本局用时 ${fmtElapsed(state.game.startedAt)} · 共 ${state.game.roundCount || 1} 轮</p>` : '';
   const maxRentHtml = mr ? `<p style="text-align:center;font-size:13px;color:var(--text-secondary);margin-bottom:10px;">💸 本局最大单笔租金：<b style="color:var(--accent-warning);">¥${mr.amount.toLocaleString()}</b>（${escapeHtml(mr.from)} → ${escapeHtml(mr.to)} 的「${escapeHtml(mr.cell)}」）</p>` : '';
+  const dh = state.game.diceHistory || [];
+  const dhMax = Math.max(1, ...dh);
+  const diceHtml = dh.some(v => v > 0) ? `<p style="text-align:center;font-size:12px;color:var(--text-secondary);margin-bottom:10px;">🎲 掷骰分布：<br>${dh.slice(2).map((v, i) =>
+    `<span style="display:inline-block;margin:2px 4px;">${i + 2}点 <b style="color:var(--accent-warning);">${'▉'.repeat(Math.max(1, Math.round(v / dhMax * 8)))}</b> ${v}</span>`).join('<br>')}</p>` : '';
   const hot = Object.entries(state.game.landingStats || {})
     .map(([id, n]) => ({ name: state.game.board[id] ? state.game.board[id].name : '?', n }))
     .sort((a, b) => b.n - a.n).slice(0, 3);
@@ -1405,6 +1411,7 @@ function showVictoryStats(winnerToken) {
       <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:12px;">${awardsHtml}</div>
       ${elapsedHtml}
       ${maxRentHtml}
+      ${diceHtml}
       ${richHtml}
       ${hotHtml}
       ${(state.game.nwHistory || []).length >= 2 ? '<div style="display:flex;justify-content:center;margin-bottom:10px;"><canvas id="nwCanvas"></canvas></div>' : ''}
@@ -1685,7 +1692,11 @@ function openSettings() {
       </div>` : ''}
       <div class="setting-item">
         <label>音效</label>
-        <label class="toggle"><input type="checkbox" id="soundInput" ${Sound.enabled ? 'checked' : ''}><span class="slider"></span></label>
+        <span style="display:flex;align-items:center;gap:8px;">
+          <label class="toggle"><input type="checkbox" id="soundInput" ${Sound.enabled ? 'checked' : ''}><span class="slider"></span></label>
+          <input type="range" id="volumeInput" min="0" max="100" value="${Sound.volume}" style="width:100px;" title="音量">
+          <span style="font-size:11px;color:var(--text-tertiary);">${Sound.volume}%</span>
+        </span>
       </div>
       <div class="setting-item">
         <label>自动购买（落地即买下可负担的无主地产）</label>
@@ -1704,12 +1715,18 @@ window.saveSettings = function() {
   const name = document.getElementById('nameInput')?.value?.trim();
   const avatar = document.getElementById('avatarInput')?.value;
   const soundOn = document.getElementById('soundInput')?.checked;
+  const volumeVal = document.getElementById('volumeInput')?.value;
   const autoBuyOn = document.getElementById('autoBuyInput')?.checked;
   if (name) localStorage.setItem('monopoly_name', name.slice(0, 16));
   if (avatar) localStorage.setItem('monopoly_avatar', avatar);
   if (typeof soundOn === 'boolean') {
     Sound.enabled = soundOn;
     localStorage.setItem('monopoly_sound', soundOn ? 'on' : 'off');
+  }
+  if (volumeVal !== undefined && volumeVal !== null) {
+    Sound.volume = Number(volumeVal);
+    localStorage.setItem('monopoly_volume', String(Sound.volume));
+    Sound.play([[523, 0.08, 0]]);
   }
   if (typeof autoBuyOn === 'boolean') socket.emit('setAutoBuy', { on: autoBuyOn });
   const roomPwd = document.getElementById('roomPwdInput');

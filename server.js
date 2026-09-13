@@ -236,6 +236,7 @@ function createRoom(id, mapId = 'classic') {
     nwHistory: [],         // 每轮净资产快照 [{r, v:{token:net}}]
     bank: { houses: 32, hotels: 12 },  // 银行房源（经典规则）
     landingStats: {},      // 掷骰到访次数 {cellId: count}
+    diceHistory: Array(13).fill(0), // 掷骰点数分布 [2..12]
     replay: [],            // 每轮棋盘快照（对局回放用）
     maxRent: null,         // 本局最大单笔租金 {amount,from,to,cell}
     password: null,        // 房间密码（null = 公开）
@@ -474,6 +475,7 @@ function getPublicState(room) {
     startedAt: room.startedAt,
     lastRentPaid: room.lastRentPaid,
     landingStats: room.landingStats,
+    diceHistory: room.diceHistory,
     replay: room.replay,
     trade: room.trade ? {
       seq: room.trade.seq, from: room.trade.from, to: room.trade.to,
@@ -872,6 +874,7 @@ function movePlayer(room, player, step, isDouble, dice) {
     log(room, `💰 ${player.name} 经过起点，获得 ¥${GO_SALARY}`);
   }
   room.landingStats[player.pos] = (room.landingStats[player.pos] || 0) + 1;
+  if (room.diceHistory) room.diceHistory[step] = (room.diceHistory[step] || 0) + 1;
   player.rollCount = (player.rollCount || 0) + 1;
   landOn(room, player, dice);
   if (player.bankrupt) { nextTurn(room); return; }
@@ -1167,7 +1170,7 @@ function saveRoomsNow() {
         board: r.board, dice: r.dice, currentRolled: r.currentRolled,
         roundCount: r.roundCount, turnStartedAt: r.turnStartedAt,
         jackpot: r.jackpot, maxRounds: r.maxRounds || 0, winnerToken: r.winnerToken || null,
-        settings: r.settings, nwHistory: r.nwHistory.slice(-100), bank: r.bank, maxRent: r.maxRent || null, mapId: r.mapId || 'classic', landingStats: r.landingStats || {}, startedAt: r.startedAt || null, rentMul: r.rentMul || 1, houseMul: r.houseMul || 1, replay: r.replay || [],
+        settings: r.settings, nwHistory: r.nwHistory.slice(-100), bank: r.bank, maxRent: r.maxRent || null, mapId: r.mapId || 'classic', landingStats: r.landingStats || {}, startedAt: r.startedAt || null, diceHistory: r.diceHistory || [], rentMul: r.rentMul || 1, houseMul: r.houseMul || 1, replay: r.replay || [],
         logs: r.logs.slice(-60), chats: r.chats.slice(-60),
         chanceOrder: r.chanceDeck.map(c => CHANCE_CARDS.indexOf(c)),
         chestOrder: r.chestDeck.map(c => CHEST_CARDS.indexOf(c)),
@@ -1207,6 +1210,7 @@ function loadRooms() {
       room.landingStats = s.landingStats && typeof s.landingStats === 'object' ? s.landingStats : {};
       room.startedAt = s.startedAt || null;
       room.replay = Array.isArray(s.replay) ? s.replay : [];
+      room.diceHistory = Array.isArray(s.diceHistory) && s.diceHistory.length === 13 ? s.diceHistory : Array(13).fill(0);
       room.rentMul = typeof s.rentMul === 'number' ? s.rentMul : 1;
       room.houseMul = typeof s.houseMul === 'number' ? s.houseMul : 1;
       room.maxRent = s.maxRent || null;
@@ -2292,5 +2296,5 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 server.listen(PORT, () => {
-   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.33 服务器已启动 → http://0.0.0.0:${PORT}`);
+   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.34 服务器已启动 → http://0.0.0.0:${PORT}`);
 });

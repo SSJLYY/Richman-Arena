@@ -425,6 +425,7 @@ function client(url, name) {
   check('净资产最高者获胜（T2）', T.state.winnerToken === 'tok_t2____2');
   const winLog = T.state.logs.map(l => l.text).join('|');
   check('结束原因标注回合上限', winLog.includes('回合上限'));
+  check('掷骰分布统计（T2 掷骰累计 ≥1）', Array.isArray(T.state.diceHistory) && T.state.diceHistory.some(v => v > 0));
   check('净资产历史已记录（≥2 轮）', Array.isArray(T.state.nwHistory) && T.state.nwHistory.length >= 2);
   check('回放快照已记录（≥2 帧，含所有权）', Array.isArray(T.state.replay) && T.state.replay.length >= 2 && typeof T.state.replay[1].c[1][0] === 'string');
   check('落地热度已记录（≥1 格）', T.state.landingStats && Object.keys(T.state.landingStats).length >= 1);
@@ -532,6 +533,7 @@ function client(url, name) {
   const delta = Math.abs(T.state.players['tok_t1____1'].money - (f1money - 400));
   check('赌坊结算金额正确（±¥360，非NaN）', delta === 360 && Number.isFinite(delta));
   check('赌坊格类型正确（cell36=casino）', T.state.board[36].type === 'casino' && T.state.board[36].name === '赌坊');
+
 
   // ── v2.32：团队模式（免租 + 整队获胜）──
   const teamRoom = 'team_' + Date.now().toString(36);
