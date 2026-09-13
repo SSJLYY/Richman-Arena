@@ -376,6 +376,7 @@ function concludeGame(room, alive, winnerId, reasonText) {
     s.rolls = (s.rolls || 0) + (p.rollCount || 0);
     s.jailed = (s.jailed || 0) + (p.timesJailed || 0);
     s.propsBought = (s.propsBought || 0) + (p.propsBought || 0);
+    if (room.settings.teamMode && winnerId && alive.includes(id)) s.teamWins = (s.teamWins || 0) + 1;
   });
   saveStats();
   // 历史对局档案（保留最近 20 条）
@@ -1051,6 +1052,9 @@ function scheduleBotBids(room) {
     const bidChain = () => {
       const cur = room.auction;
       if (!cur || cur.no !== a.no || p.bankrupt) return;
+      // 团队模式：当前最高出价者是队友 → 不与队友竞价
+      if (room.settings.teamMode && cur.topBidder && room.players[cur.topBidder] &&
+          room.players[cur.topBidder].team && room.players[cur.topBidder].team === p.team) return;
       const step = BID_STEP * (1 + Math.floor(Math.random() * 3));
       const next = cur.topBid === 0
         ? Math.max(BID_STEP, Math.floor(room.board[a.cellId].price * 0.3))
@@ -1059,7 +1063,9 @@ function scheduleBotBids(room) {
         placeBid(room, p, next);
       }
       const now = room.auction;
-      if (now && now.no === a.no && !p.bankrupt && now.topBidder !== p.id &&
+      const topIsTeammate = room.settings.teamMode && now.topBidder && room.players[now.topBidder] &&
+        room.players[now.topBidder].team === p.team;
+      if (now && now.no === a.no && !p.bankrupt && !topIsTeammate && now.topBidder !== p.id &&
           now.topBid + BID_STEP <= Math.min(maxBid, p.money)) {
         botAddTimer(room, bidChain, 1000 + Math.floor(Math.random() * 1800));
       }
@@ -1946,12 +1952,12 @@ io.on('connection', (socket) => {
       // 不加入 order —— 永远轮不到它行动，保证测试确定性
     } else if (op === 'setOwner') {
       const c = room.board[cellId];
-      const np = room.players[token];
+      const np = room.players[target || token];
       if (c && np) {
         if (c.owner && room.players[c.owner]) {
           room.players[c.owner].properties = room.players[c.owner].properties.filter(x => x !== cellId);
         }
-        c.owner = token; c.level = 0; c.mortgaged = false;
+        c.owner = target || token; c.level = 0; c.mortgaged = false;
         if (!np.properties.includes(cellId)) np.properties.push(cellId);
       }
     } else if (op === 'setBank') {
@@ -2286,5 +2292,5 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 server.listen(PORT, () => {
-   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.32 服务器已启动 → http://0.0.0.0:${PORT}`);
+   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.33 服务器已启动 → http://0.0.0.0:${PORT}`);
 });

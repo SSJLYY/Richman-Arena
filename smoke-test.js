@@ -546,22 +546,78 @@ function client(url, name) {
   await sleep(400);
   T.socket.emit('start');
   await sleep(400);
-  const teams = { 'tok_t1____1': T.state.players['tok_t1____1'].team, 'tok_ta____a': T.state.players['tok_ta____a'].team, 'tok_tb____b': T.state.players['tok_tb____b'].team };
-  check('队伍交替分配（T=A, TA=B, TB=A）', teams['tok_t1____1'] === 'A' && teams['tok_ta____a'] === 'B' && teams['tok_tb____b'] === 'A');
-  // TB 是 T 的队友（同 A 队）；TA 是对手（B 队）
+  const teams = {
+    'tok_t1____1': T.state.players['tok_t1____1'].team,
+    'tok_ta____a': T.state.players['tok_ta____a'].team,
+    'tok_tb____b': T.state.players['tok_tb____b'].team,
+  };
+  // 动态识别队友/对手（TA/TB 连接顺序有竞态，队伍按加入顺序交替）
+  const myTeam = teams['tok_t1____1'];
+  const mateId = teams['tok_ta____a'] === myTeam ? 'tok_ta____a' : 'tok_tb____b';
+  const oppId = mateId === 'tok_ta____a' ? 'tok_tb____b' : 'tok_ta____a';
+  const mateSock = (mateId === 'tok_ta____a' ? TA : TB).socket;
+  const oppSock = (oppId === 'tok_ta____a' ? TA : TB).socket;
+  check('队伍分配（T 与一名玩家同队）', !!myTeam && teams[mateId] === myTeam && teams[oppId] !== myTeam);
+
   T.socket.emit('testHook', { op: 'setOwner', cellId: 1 });
   await sleep(250);
-  const tbMoney = T.state.players['tok_tb____b'].money;
-  TB.socket.emit('testHook', { op: 'landAs', pos: 1 });
+  const mateMoney = T.state.players[mateId].money;
+  mateSock.emit('testHook', { op: 'landAs', pos: 1 });
   await sleep(400);
-  check('队友路过免租', T.state.players['tok_tb____b'].money === tbMoney);
-  const taMoney = T.state.players['tok_ta____a'].money;
-  TA.socket.emit('testHook', { op: 'landAs', pos: 1 });
+  check('队友路过免租', T.state.players[mateId].money === mateMoney);
+  const oppMoney = T.state.players[oppId].money;
+  oppSock.emit('testHook', { op: 'landAs', pos: 1 });
   await sleep(400);
-  check('对手正常付租', T.state.players['tok_ta____a'].money < taMoney);
-  TA.socket.emit('testHook', { op: 'bankrupt', target: 'tok_ta____a' });
+  check('对手正常付租', T.state.players[oppId].money < oppMoney);
+  oppSock.emit('testHook', { op: 'bankrupt', target: oppId });
   await sleep(500);
-  check('整队淘汰即结束（A队获胜）', T.state.ended === true && T.state.winnerToken === 'tok_t1____1');
+  check('整队淘汰即结束（T 队获胜）', T.state.ended === true && T.state.winnerToken === 'tok_t1____1');
+
+  // ── v2.33：盟友 bot 不与队友竞价 ──
+  // 房间：T1(A) → TA(B) → bot1(A) → bot2(B=TA队友)；bot2 预持 cell3（差 cell1 成套）
+  const allyRoom = 'ally_' + Date.now().toString(36);
+  T.socket.emit('join', { roomId: allyRoom, name: 'A1', token: 'tok_t1____1' });
+  await sleep(400);
+  const T5 = client(URL2, 'A2');
+  T5.socket.on('connect', () => T5.socket.emit('join', { roomId: allyRoom, name: 'A2', token: 'tok_ta____a', avatar: '👨' }));
+  await sleep(400);
+  T.socket.emit('addBot', { difficulty: 'normal' });
+  await sleep(300);
+  T.socket.emit('addBot', { difficulty: 'hard' });
+  await sleep(400);
+  T.socket.emit('setSettings', { map: 'classic', teamMode: true });
+  await sleep(300);
+  T.socket.emit('start');
+  await sleep(500);
+  const botsInRoom = T.state.order.filter(t => T.state.players[t] && T.state.players[t].isBot);
+  const botA = botsInRoom[0], botB = botsInRoom[1];
+  const teamOf = t => T.state.players[t].team;
+  check('队伍结构（TA=B, bot1=A, bot2=B）', teamOf('tok_ta____a') === 'B' && teamOf(botA) === 'A' && teamOf(botB) === 'B');
+  // bot2 预持 cell3（棕系成套只差 cell1）
+  T.socket.emit('testHook', { op: 'setOwner', cellId: 3, target: botB });
+  await sleep(300);
+  // T1 落在 cell1 弃拍 → 拍卖：TA 出 ¥180 后，队友 bot2 不得加价（bot1 是对手可以抢）
+  T.socket.emit('testHook', { op: 'teleport', pos: 1 });
+  await sleep(250);
+  T.socket.emit('testHook', { op: 'resolve', pos: 1 });
+  await sleep(300);
+  T.socket.emit('endTurn');
+  await sleep(600);
+  TA.socket.emit('auctionBid', { amount: 180 });
+  await sleep(4000); // 盟友/对手出价链窗口
+  const bidLogs = T.state.logs.filter(l => l.text.includes('出价 ¥'));
+  const teammateName = T.state.players[botB] ? T.state.players[botB].name : '';
+  let violation = false;
+  bidLogs.forEach((b, i) => {
+    if (b.text.includes('A2') && i + 1 < bidLogs.length) {
+      if (bidLogs[i + 1].text.includes(teammateName)) violation = true; // 直接抬高队友的出价
+    }
+  });
+  check('盟友 bot 不直接抬高队友出价', !violation);
+  console.log('  ⏳ 等待拍卖结算…');
+  await sleep(21000);
+  check('拍卖正常结算（有胜者）', T.state.board[1].owner !== null);
+  T.socket.emit('reset');
   TA.socket.close(); TB.socket.close();
   T.socket.close(); T2.socket.close(); T3.socket.close(); T4.socket.close();
   sSock.close();

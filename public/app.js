@@ -1954,6 +1954,7 @@ socket.on('stats', (data) => {
     { icon: '🎲', name: '骰子狂人', desc: '生涯掷骰 200 次', got: mine && (mine.rolls || 0) >= 200 },
     { icon: '🏗', name: '圈地运动', desc: '生涯购地 15 块', got: mine && (mine.propsBought || 0) >= 15 },
     { icon: '🚔', name: '铁窗泪', desc: '入狱 3 次（也算成就）', got: mine && (mine.jailed || 0) >= 3 },
+    { icon: '⚔️', name: '并肩作战', desc: '团队模式获胜 1 次', got: mine && (mine.teamWins || 0) >= 1 },
   ];
   const recentEl = document.getElementById('recentGames');
   if (recentEl) {
