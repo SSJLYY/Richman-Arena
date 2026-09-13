@@ -199,6 +199,7 @@ function createRoom(id, mapId = 'classic') {
     doubleCount: 0,
     currentRolled: false,  // 真人已掷骰、处于购买决策阶段（结束回合才交棒）
     roundCount: 1,
+    startedAt: null,       // 开局时间（start 时设置）
     turnStartedAt: Date.now(),
     auction: null,         // 当前拍卖 {no,cellId,topBid,topBidder,startedAt,endsAt}
     auctionNo: 0,
@@ -384,6 +385,8 @@ function getPublicState(room) {
     nwHistory: room.nwHistory.slice(-100),
     bank: room.bank,
     maxRent: room.maxRent,
+    startedAt: room.startedAt,
+    lastRentPaid: room.lastRentPaid,
     landingStats: room.landingStats,
     trade: room.trade ? {
       seq: room.trade.seq, from: room.trade.from, to: room.trade.to,
@@ -396,6 +399,14 @@ function getPublicState(room) {
       cellId: room.proposal.cellId, price: room.proposal.price, expiresAt: room.proposal.expiresAt,
     } : null,
     lastCard: room.lastCard,
+    spectatorCount: (() => {
+      const socks = io.sockets.adapter.rooms.get(room.id);
+      const humans = room.order.filter(t => {
+        const p = room.players[t];
+        return p && !p.isBot && p.connected;
+      }).length;
+      return Math.max(0, (socks ? socks.size : 0) - humans);
+    })(),
     debt: room.debt ? {
       playerId: room.debt.playerId, amount: room.debt.amount,
       creditorId: room.debt.creditorId, reason: room.debt.reason,
@@ -666,6 +677,7 @@ function landOn(room, player, dice, opts = {}) {
           if (!room.maxRent || rent > room.maxRent.amount) {
             room.maxRent = { amount: rent, from: player.name, to: owner.name, cell: cell.name };
           }
+          room.lastRentPaid = { cellId: cell.id, amount: rent, ts: Date.now() };
           charge(room, player, rent, 'rent', cell.owner);
         }
       } else if (!cell.owner && !player.bankrupt) {
@@ -1011,7 +1023,7 @@ function saveRoomsNow() {
         board: r.board, dice: r.dice, currentRolled: r.currentRolled,
         roundCount: r.roundCount, turnStartedAt: r.turnStartedAt,
         jackpot: r.jackpot, maxRounds: r.maxRounds || 0, winnerToken: r.winnerToken || null,
-        settings: r.settings, nwHistory: r.nwHistory.slice(-100), bank: r.bank, maxRent: r.maxRent || null, mapId: r.mapId || 'classic', landingStats: r.landingStats || {},
+        settings: r.settings, nwHistory: r.nwHistory.slice(-100), bank: r.bank, maxRent: r.maxRent || null, mapId: r.mapId || 'classic', landingStats: r.landingStats || {}, startedAt: r.startedAt || null,
         logs: r.logs.slice(-60), chats: r.chats.slice(-60),
         chanceOrder: r.chanceDeck.map(c => CHANCE_CARDS.indexOf(c)),
         chestOrder: r.chestDeck.map(c => CHEST_CARDS.indexOf(c)),
@@ -1049,6 +1061,7 @@ function loadRooms() {
       if (s.bank && typeof s.bank === 'object') room.bank = { houses: s.bank.houses ?? 32, hotels: s.bank.hotels ?? 12 };
       room.mapId = MAPS[s.mapId] ? s.mapId : 'classic';
       room.landingStats = s.landingStats && typeof s.landingStats === 'object' ? s.landingStats : {};
+      room.startedAt = s.startedAt || null;
       room.maxRent = s.maxRent || null;
       room.nwHistory = Array.isArray(s.nwHistory) ? s.nwHistory : [];
       room.logs = Array.isArray(s.logs) ? s.logs : [];
@@ -1464,6 +1477,7 @@ io.on('connection', (socket) => {
     room.started = true;
     room.turnIndex = 0;
     room.roundCount = 1;
+    room.startedAt = Date.now();
     if (room.settings.randomFirst) {
       shuffle(room.order);
       log(room, '🔀 随机先手：' + room.order.map(t => room.players[t]?.name).join(' → '));
@@ -2048,5 +2062,5 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 server.listen(PORT, () => {
-   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.18 服务器已启动 → http://0.0.0.0:${PORT}`);
+   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.20 服务器已启动 → http://0.0.0.0:${PORT}`);
 });

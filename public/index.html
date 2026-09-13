@@ -8,11 +8,7 @@
   <link rel="manifest" href="manifest.json"/>
   <link rel="icon" href="icon.svg" type="image/svg+xml"/>
   <title>大富翁在线 - Monopoly Online</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎲</text></svg>"/>
-  <link rel="stylesheet" href="style.css?v=2180"/>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=2182"/>
 </head>
 <body>
   <div id="app">
@@ -38,36 +34,44 @@
         </div>
         <p class="lobby-sub">和机器人或朋友来一局经典大富翁</p>
 
-        <div class="lobby-section">
-          <h2>👤 你的身份</h2>
-          <div class="lobby-form">
-            <input type="text" id="lobbyName" placeholder="输入昵称" maxlength="16" autocomplete="off"/>
-            <div id="avatarGrid" class="avatar-grid"></div>
-          </div>
-        </div>
+        <div class="lobby-grid">
+          <div class="lobby-col">
+            <div class="lobby-section">
+              <h2>👤 你的身份</h2>
+              <div class="lobby-form">
+                <input type="text" id="lobbyName" placeholder="输入昵称" maxlength="16" autocomplete="off"/>
+                <div id="avatarGrid" class="avatar-grid"></div>
+              </div>
+            </div>
 
-        <div class="lobby-section">
-          <h2>🎮 开始游戏</h2>
-          <div class="lobby-actions">
-            <button id="lobbyCreateBtn" class="btn btn-lg btn-primary">🏠 创建新房间</button>
-            <button id="lobbySoloBtn" class="btn btn-lg btn-warning" title="自动建房 + 3个机器人 + 开局">🤖 单人快速开局</button>
-            <div class="lobby-join">
-              <input type="text" id="joinRoomInput" placeholder="输入房间号" maxlength="24"/>
-              <button id="joinRoomBtn" class="btn btn-lg btn-success">加入</button>
+            <div class="lobby-section">
+              <h2>🎮 开始游戏</h2>
+              <div class="lobby-actions">
+                <button id="lobbyCreateBtn" class="btn btn-lg btn-primary">🏠 创建新房间</button>
+                <button id="lobbySoloBtn" class="btn btn-lg btn-warning" title="自动建房 + 3个机器人 + 开局">🤖 单人快速开局</button>
+                <div class="lobby-join">
+                  <input type="text" id="joinRoomInput" placeholder="输入房间号" maxlength="24"/>
+                  <button id="joinRoomBtn" class="btn btn-lg btn-success">加入</button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div class="lobby-section">
-          <h2>📋 房间列表 <button class="btn btn-sm btn-ghost" id="refreshRoomsBtn">🔄 刷新</button></h2>
-          <div id="lobbyRoomList" class="lobby-rooms">
-            <p class="lobby-empty" id="lobbyEmpty">暂无房间，创建一个吧！</p>
-          </div>
+          <div class="lobby-col">
+            <div class="lobby-section">
+              <h2>📋 房间列表 <button class="btn btn-sm btn-ghost" id="refreshRoomsBtn">🔄 刷新</button></h2>
+              <div id="lobbyRoomList" class="lobby-rooms">
+                <p class="lobby-empty" id="lobbyEmpty">暂无房间，创建一个吧！</p>
+              </div>
+            </div>
 
-          <h2 style="margin-top:18px;">🏆 胜局排行榜</h2>
-          <div id="myStatsLine" class="my-stats-line"></div>
-          <div id="lobbyStats" class="stats-list">
-            <p class="lobby-empty">暂无战绩，开一局吧！</p>
+            <div class="lobby-section">
+              <h2>🏆 胜局排行榜</h2>
+              <div id="myStatsLine" class="my-stats-line"></div>
+              <div id="lobbyStats" class="stats-list">
+                <p class="lobby-empty">暂无战绩，开一局吧！</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

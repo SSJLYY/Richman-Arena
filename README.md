@@ -9,9 +9,10 @@
 | 层 | 技术 |
 |----|------|
 | 后端 | Node.js 16 + Express + Socket.io（无构建步骤） |
-| 前端 | 原生 HTML / CSS / JavaScript，暗色主题，PWA |
+| 前端 | 原生 HTML / CSS / JavaScript，暗色主题，PWA，系统字体栈（不依赖外部 Web Font） |
 | 进程 | PM2（systemd 开机自启） |
 | 存储 | JSON 文件持久化（房间 / 战绩），每日自动备份 |
+| 传输 | 静态资源 Gzip + ETag 协商缓存（内置 zlib，无额外依赖） |
 
 ## 功能一览
 
@@ -36,11 +37,24 @@ npm start          # 默认 8081 端口
 ## 测试
 
 ```bash
-npm test           # 冒烟测试：自动起独立测试实例，92 项断言
+npm install          # 含 devDependencies（jsdom / socket.io-client）
+npm test             # 服务端冒烟测试：97 项断言
+npm run test:render  # 前端渲染回归：37 项断言（jsdom）
+npm run test:all     # 两套一起跑
 ```
 
-测试覆盖：加入 / 开局 / 掷骰 / 购买 / 拍卖 / 奖池 / 决策阶段 / 欠款 / 托管 / 机器人接管 / 重连 / 交易确认 / 银行房源 / 回合上限 / 限速 / 服务器重启恢复等。
-测试实例使用随机端口 + MONOPOLY_TEST=1（生产环境测试钩子不可用），结束自动 SIGKILL 清理。
+- `npm test` 连接本机 8081 实例，**跑之前需先 `npm start`**；测试覆盖加入 / 开局 / 掷骰 / 购买 / 拍卖 / 奖池 / 决策阶段 / 欠款 / 托管 / 机器人接管 / 重连 / 交易确认 / 银行房源 / 回合上限 / 限速 / 服务器重启恢复等。测试实例使用随机端口 + `MONOPOLY_TEST=1`（生产环境测试钩子不可用），结束自动 SIGKILL 清理。
+- `npm run test:render` 在真实 DOM（jsdom）中加载页面，验证棋盘增量渲染与日志跳过重建：买地 / 建房 / 酒店 / 抵押 / 移动闪烁 / 换地图 / 中央面板刷新 / 日志过滤等场景，并断言**状态未变的格子会复用同一个 DOM 节点**（即没有重复重建）。
+
+## 性能要点
+
+| 优化 | 效果 |
+|------|------|
+| 静态资源 Gzip（启动即缓存，按 mtime 失效，配合 ETag 走 304） | app.js 106KB → 29KB、style.css 39KB → 8.5KB |
+| 棋盘增量渲染（骨架复用 + 变化才更新，静态内容变化时自动回退重建） | 每次广播不再销毁重建 40 格 DOM |
+| 日志渲染签名比对 | 内容未变时整块跳过重建 |
+| 租金预统计表 | 广播时的 rent 计算从 O(n²) 降为 O(n) |
+| 移除 Google Fonts 外链 | 避免国内网络下字体请求阻塞首屏 |
 
 ## 服务器部署
 
@@ -52,6 +66,9 @@ curl :8081/health         # 健康检查
 ```
 
 数据目录：`/opt/monopoly/data/`（rooms.json 当前对局、stats.json 战绩、backup/ 每日备份）。
+
+前端资源（`public/`）由 `express.static` 直出且响应头为 `no-cache`，**替换文件即生效，无需重启**；
+只有 `server.js` / `package.json` 变更才需要 `pm2 restart monopoly`。
 
 ## 快捷键
 

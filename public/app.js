@@ -37,7 +37,9 @@ const state = {
   selectedAvatar: null,
   auctionHiddenNo: 0,  // 用户手动收起的拍卖编号
   lastCardTs: 0,       // 已展示过的卡
-  flashCells: [],      // 本次刷新需要闪烁的格子
+  flashCells: [],
+  goldCells: [],       // 租金到账金色闪光格
+  lastTickSecond: null, // 拍卖倒计时已滴答的秒数      // 本次刷新需要闪烁的格子
   proposalShownSeq: 0, // 已展示过的购地提案
   proposalModalOpen: false,
   tradeShownSeq: 0,    // 已展示过的交易提议
@@ -284,6 +286,13 @@ function init() {
     if (state.view !== 'game') return;
     updateTurnTimer();
     if (state.game?.auction) renderAuction();
+    // 本局用时每秒走字
+    const bcRound = document.querySelector('.bc-round');
+    if (bcRound && state.game && state.game.startedAt && !state.game.ended) {
+      const s = Math.max(0, Math.floor((Date.now() - state.game.startedAt) / 1000));
+      const t = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+      bcRound.innerHTML = bcRound.innerHTML.replace(/已用 [0-9:]+/, '已用 ' + t);
+    }
   }, 1000);
 
   setTimeout(() => {
@@ -540,7 +549,11 @@ function setupKeyboardShortcuts() {
   document.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
     if (e.key === 'h' || e.key === 'H') { if (!e.repeat) openHelp(); return; }
-    if (state.game?.ended) { if (e.key === 'Escape') window.location.reload(); return; }
+    if (state.game?.ended) {
+      if (e.key === 'Escape') window.location.reload();
+      if (e.key === 'Enter') { e.preventDefault(); socket.emit('reset'); }
+      return;
+    }
 
     const myTurn = isMyTurn() && !state.game.diceAnim;
     switch (e.key.toLowerCase()) {
@@ -576,6 +589,27 @@ function setupKeyboardShortcuts() {
 // ────────────────────────────────────────────────────────────
 // RENDER: BOARD  (server pos is {r, c}, 1-based grid 11x11)
 // ────────────────────────────────────────────────────────────
+function fmtElapsed(from) {
+  const s = Math.max(0, Math.floor((Date.now() - from) / 1000));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function computeMonopolies() {
+  // 返回 { group: ownerId } —— 被同一位玩家集齐的色系
+  const map = {};
+  if (!state.game) return map;
+  const byGroup = {};
+  state.game.board.forEach(c => {
+    if (c.type === 'city' && c.group && c.owner) {
+      (byGroup[c.group] = byGroup[c.group] || []).push(c.owner);
+    }
+  });
+  Object.entries(byGroup).forEach(([g, owners]) => {
+    if (owners.length >= 2 && owners.every(o => o === owners[0])) map[g] = owners[0];
+  });
+  return map;
+}
+
 function renderBoard() {
   if (!state.game) return;
   // 只清理格子与中央面板，tokenLayer 保留以支持移动过渡动画
@@ -583,6 +617,7 @@ function renderBoard() {
     if (ch !== els.tokenLayer) ch.remove();
   });
 
+  const monopolies = computeMonopolies();
   state.game.board.forEach(cell => {
     const div = document.createElement('div');
     div.className = `cell ${cell.type}`;
@@ -659,6 +694,11 @@ function renderBoard() {
     }
 
     if (state.flashCells && state.flashCells.includes(cell.id)) div.classList.add('cell-flash');
+    if (state.goldCells && state.goldCells.includes(cell.id)) div.classList.add('cell-gold');
+    if (cell.group && monopolies[cell.group]) {
+      div.classList.add('monopoly-cell');
+      div.style.setProperty('--mono-color', playerColor(monopolies[cell.group]));
+    }
 
     const ownerName = cell.owner ? (state.game.players[cell.owner]?.name || '') : '';
     div.title = `${cell.name}${cell.price ? ' · ¥' + cell.price : ''}` +
@@ -688,7 +728,7 @@ function renderBoard() {
     <div class="bc-sub">大富翁在线</div>
     <div class="bc-dice">${dice ? `${faces[dice[0] - 1]}${faces[dice[1] - 1]} <b>${dice[0] + dice[1]}</b>` : '🎲🎲'}</div>
     <div class="bc-turn">${turnLine}</div>
-    <div class="bc-round">第 ${state.game.roundCount || 1}${state.game.maxRounds ? '/' + state.game.maxRounds : ''} 回合 · ${state.game.order.length} 人</div>
+    <div class="bc-round">第 ${state.game.roundCount || 1}${state.game.maxRounds ? '/' + state.game.maxRounds : ''} 回合 · ${state.game.order.length} 人${state.game.startedAt ? ' · 已用 ' + fmtElapsed(state.game.startedAt) : ''}</div>
     ${state.game.jackpot > 0 ? `<div class="bc-jackpot">🎁 停车场奖池 ¥${state.game.jackpot.toLocaleString()}</div>` : ''}
   `;
   els.board.appendChild(center);
@@ -1243,6 +1283,7 @@ function showVictoryStats(winnerToken) {
     `<span class="award-chip">${a.icon} ${a.label}：${escapeHtml(a.who.name)}${a.who.id === state.myToken ? '（你）' : ''}</span>`
   ).join('');
   const mr = state.game.maxRent;
+  const elapsedHtml = state.game.startedAt ? `<p style="text-align:center;font-size:12px;color:var(--text-tertiary);margin-bottom:10px;">⏱ 本局用时 ${fmtElapsed(state.game.startedAt)} · 共 ${state.game.roundCount || 1} 轮</p>` : '';
   const maxRentHtml = mr ? `<p style="text-align:center;font-size:13px;color:var(--text-secondary);margin-bottom:10px;">💸 本局最大单笔租金：<b style="color:var(--accent-warning);">¥${mr.amount.toLocaleString()}</b>（${escapeHtml(mr.from)} → ${escapeHtml(mr.to)} 的「${escapeHtml(mr.cell)}」）</p>` : '';
   const hot = Object.entries(state.game.landingStats || {})
     .map(([id, n]) => ({ name: state.game.board[id] ? state.game.board[id].name : '?', n }))
@@ -1264,6 +1305,7 @@ function showVictoryStats(winnerToken) {
     `
       <p style="font-size:17px;text-align:center;padding:6px 0 12px;">🏆 胜者：<strong style="color:var(--accent-warning);">${escapeHtml(winnerName)}</strong></p>
       <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:12px;">${awardsHtml}</div>
+      ${elapsedHtml}
       ${maxRentHtml}
       ${hotHtml}
       ${(state.game.nwHistory || []).length >= 2 ? '<div style="display:flex;justify-content:center;margin-bottom:10px;"><canvas id="nwCanvas"></canvas></div>' : ''}
@@ -1717,7 +1759,11 @@ socket.on('state', (gameState) => {
 
   // 棋子移动 → 闪光格
   state.flashCells = [];
+  state.goldCells = [];
   if (prev) {
+    if (gameState.lastRentPaid && gameState.lastRentPaid.ts !== (prev.lastRentPaid && prev.lastRentPaid.ts)) {
+      state.goldCells.push(gameState.lastRentPaid.cellId);
+    }
     gameState.order.forEach(pid => {
       const p = gameState.players[pid];
       const pp = prev.players && prev.players[pid];
@@ -1729,7 +1775,8 @@ socket.on('state', (gameState) => {
   // 服务端下发的色系数据（租金表/建造费单一数据源）覆盖前端兜底副本
   if (gameState.groups) Object.assign(GROUP_META, gameState.groups);
   if (prevEnded && !gameState.ended) state.victoryShown = false;
-  if (els.roomLabel) els.roomLabel.textContent = `房间: ${gameState.id}`;
+  if (els.roomLabel) els.roomLabel.textContent = `房间: ${gameState.id}` +
+    (gameState.spectatorCount > 0 ? ` · 👀${gameState.spectatorCount}` : '');
   render();
 });
 
@@ -2033,6 +2080,7 @@ function renderAuction() {
   const a = state.game?.auction;
   if (!a || a.no === state.auctionHiddenNo) {
     els.auctionPanel.classList.add('hidden');
+    state.lastTickSecond = null;
     return;
   }
   const cell = state.game.board[a.cellId];
@@ -2050,6 +2098,11 @@ function renderAuction() {
   const left = Math.max(0, Math.ceil((a.endsAt - Date.now()) / 1000));
   els.apTimer.textContent = `${left}s`;
   els.apTimer.style.color = left <= 5 ? 'var(--accent-danger)' : '';
+  els.auctionPanel.classList.toggle('urgent', left <= 5 && left > 0);
+  if (left <= 3 && left > 0 && state.lastTickSecond !== left && Sound.enabled) {
+    state.lastTickSecond = left;
+    Sound.play([[880, 0.05, 0]], 0.06);
+  }
 
   const me = state.game.players[state.myToken];
   const myTurnToBid = me && !me.bankrupt;

@@ -379,6 +379,16 @@ function client(url, name) {
   const mrOk = T.state.maxRent && T.state.maxRent.amount > 0 && !!T.state.maxRent.cell;
   check('最大单笔租金记录', mrOk);
 
+  // ── v2.19：公用事业租金回归（锁 2.18 的 NaN 修复）──
+  T.socket.emit('testHook', { op: 'setOwner', cellId: 12 });
+  await sleep(300);
+  const t1before = T.state.players['tok_t1____1'].money;
+  T2.socket.emit('testHook', { op: 'landAs', pos: 12 });
+  await sleep(450);
+  const t1after = T.state.players['tok_t1____1'].money;
+  const rentGot = t1after - t1before;
+  check('公用事业租金正确（¥280，无NaN）', rentGot === 280 && Number.isFinite(rentGot));
+
   // ── v2.6：抽卡事件 ──
   T.socket.emit('testHook', { op: 'lastCard' });
   await sleep(300);
