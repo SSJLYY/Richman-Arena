@@ -388,6 +388,7 @@ function client(url, name) {
   const t1after = T.state.players['tok_t1____1'].money;
   const rentGot = t1after - t1before;
   check('公用事业租金正确（¥280，无NaN）', rentGot === 280 && Number.isFinite(rentGot));
+  check('街道收益统计（cell12 累计 ¥280）', T.state.board[12].incomeEarned === 280);
 
   // ── v2.6：抽卡事件 ──
   T.socket.emit('testHook', { op: 'lastCard' });

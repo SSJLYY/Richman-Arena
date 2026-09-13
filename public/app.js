@@ -1289,6 +1289,11 @@ function showVictoryStats(winnerToken) {
     .map(([id, n]) => ({ name: state.game.board[id] ? state.game.board[id].name : '?', n }))
     .sort((a, b) => b.n - a.n).slice(0, 3);
   const hotHtml = hot.length ? `<p style="text-align:center;font-size:13px;color:var(--text-secondary);margin-bottom:10px;">🔥 最繁忙地段：${hot.map(h => `${escapeHtml(h.name)}（${h.n}次）`).join('、')}</p>` : '';
+  const rich = state.game.board
+    .filter(c => (c.incomeEarned || 0) > 0)
+    .sort((a, b) => (b.incomeEarned || 0) - (a.incomeEarned || 0))
+    .slice(0, 3);
+  const richHtml = rich.length ? `<p style="text-align:center;font-size:13px;color:var(--text-secondary);margin-bottom:10px;">💰 最赚钱街区：${rich.map(c => `${escapeHtml(c.name)}（¥${(c.incomeEarned || 0).toLocaleString()}）`).join('、')}</p>` : '';
   const tableRows = rows.map((r, i) => `
     <tr class="${!r.p.bankrupt ? 'winner' : ''}">
       <td>${i + 1}</td>
@@ -1307,6 +1312,7 @@ function showVictoryStats(winnerToken) {
       <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:12px;">${awardsHtml}</div>
       ${elapsedHtml}
       ${maxRentHtml}
+      ${richHtml}
       ${hotHtml}
       ${(state.game.nwHistory || []).length >= 2 ? '<div style="display:flex;justify-content:center;margin-bottom:10px;"><canvas id="nwCanvas"></canvas></div>' : ''}
       <table class="stats-table">
@@ -1795,7 +1801,7 @@ function renderLobbyRooms() {
     div.className = 'lobby-room-item';
     div.innerHTML = `
       <span class="lr-id">🏠 ${escapeHtml(r.id)}</span>
-      <span class="lr-meta">${r.playerCount}/8 人 ${r.started ? '· 游戏中' : r.ended ? '· 已结束' : '· 等待中'}${r.spectators > 0 ? ` · 👀${r.spectators}` : ''}</span>
+      <span class="lr-meta">${r.mapName || '经典版'} · ${r.playerCount}/8 人 ${r.started ? '· 游戏中' : r.ended ? '· 已结束' : '· 等待中'}${r.spectators > 0 ? ` · 👀${r.spectators}` : ''}</span>
     `;
     const btn = document.createElement('button');
     btn.className = 'btn btn-sm btn-primary';

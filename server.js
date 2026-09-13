@@ -438,6 +438,7 @@ function roomList() {
       started: r.started,
       ended: r.ended,
       spectators: Math.max(0, sockCount - humans),
+      mapName: MAPS[r.mapId] ? MAPS[r.mapId].name : '经典版',
     };
   });
 }
@@ -678,6 +679,7 @@ function landOn(room, player, dice, opts = {}) {
             room.maxRent = { amount: rent, from: player.name, to: owner.name, cell: cell.name };
           }
           room.lastRentPaid = { cellId: cell.id, amount: rent, ts: Date.now() };
+          cell.incomeEarned = (cell.incomeEarned || 0) + rent;
           charge(room, player, rent, 'rent', cell.owner);
         }
       } else if (!cell.owner && !player.bankrupt) {
@@ -898,6 +900,16 @@ function auctionValue(room, player, cell) {
     const total = room.board.filter(c => c.group === cell.group).length;
     factor = owned > 0 ? 1.3 : 0.85;
     if (owned === total - 1) factor = 1.6; // 差这块成套，志在必得
+    // 预判竞争：别的玩家只差这块就能成套 → 他们会疯抢，机器人也愿意抬价阻击
+    if (owned < total - 1) {
+      const rivalThreat = room.board.some(c => {
+        if (c.group !== cell.group || c.type !== 'city' || c.owner === player.id || !c.owner) return false;
+        const o = room.players[c.owner];
+        if (!o || o.bankrupt) return false;
+        return countOwnedInGroup(room, o.id, cell.group) === total - 1;
+      });
+      if (rivalThreat) factor = Math.max(factor, 1.25);
+    }
   } else if (cell.type === 'railroad') {
     factor = 1.15;
   }
@@ -2062,5 +2074,5 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 server.listen(PORT, () => {
-   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.20 服务器已启动 → http://0.0.0.0:${PORT}`);
+   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.21 服务器已启动 → http://0.0.0.0:${PORT}`);
 });
