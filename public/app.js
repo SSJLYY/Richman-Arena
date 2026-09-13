@@ -43,7 +43,8 @@ const state = {
   lastCardTs: 0,       // 已展示过的卡
   flashCells: [],
   goldCells: [],       // 租金到账金色闪光格
-  lastTickSecond: null, // 拍卖倒计时已滴答的秒数      // 本次刷新需要闪烁的格子
+  lastTickSecond: null,
+  replayIdx: null,      // 回放模式：当前查看的快照下标（null = 直播） // 拍卖倒计时已滴答的秒数      // 本次刷新需要闪烁的格子
   proposalShownSeq: 0, // 已展示过的购地提案
   proposalModalOpen: false,
   tradeShownSeq: 0,    // 已展示过的交易提议
@@ -171,6 +172,7 @@ const els = {
   inviteBtn: $('inviteBtn'),
   chartBtn: $('chartBtn'),
   overviewBtn: $('overviewBtn'),
+  replayBtn: $('replayBtn'),
   roomSettingsRow: $('roomSettingsRow'),
   mapSel: $('mapSel'),
   turnTimeSel: $('turnTimeSel'),
@@ -516,6 +518,7 @@ function setupEventListeners() {
   els.inviteBtn?.addEventListener('click', () => copyInviteLink());
   els.chartBtn?.addEventListener('click', () => openNwChart());
   els.overviewBtn?.addEventListener('click', () => openAssetsOverview());
+  els.replayBtn?.addEventListener('click', () => openReplay());
   document.querySelectorAll('#quickReactions button').forEach(btn => {
     btn.addEventListener('click', () => {
       if (state.game) socket.emit('chat', btn.dataset.emoji);
@@ -600,6 +603,28 @@ function setupKeyboardShortcuts() {
 // ────────────────────────────────────────────────────────────
 // RENDER: BOARD  (server pos is {r, c}, 1-based grid 11x11)
 // ────────────────────────────────────────────────────────────
+// 回放模式下返回由快照重建的"视图态"，否则返回直播态
+function displayGame() {
+  const g = state.game;
+  if (state.replayIdx === null || !g || !g.replay || !g.replay.length) return g;
+  const snap = g.replay[Math.min(state.replayIdx, g.replay.length - 1)];
+  if (!snap) return g;
+  const view = { ...g, isReplay: true, replayRound: snap.r };
+  view.board = g.board.map((c, i) => {
+    const s = snap.c[i] || [0, 0, 0];
+    return { ...c, owner: s[0] || null, level: s[1] || 0, mortgaged: !!s[2], rent: 0 };
+  });
+  view.players = {};
+  g.order.forEach(pid => {
+    const live = g.players[pid];
+    if (!live) return;
+    const s = snap.p[pid] || [0, 0, 1];
+    view.players[pid] = { ...live, pos: s[0], money: s[1], bankrupt: !!s[2] };
+  });
+  view.order = g.order.filter(pid => view.players[pid]);
+  return view;
+}
+
 function fmtElapsed(from) {
   const s = Math.max(0, Math.floor((Date.now() - from) / 1000));
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
@@ -622,6 +647,7 @@ function computeMonopolies() {
 }
 
 function renderBoard() {
+  const g = displayGame();
   if (!state.game) return;
   // 只清理格子与中央面板，tokenLayer 保留以支持移动过渡动画
   Array.from(els.board.children).forEach(ch => {
@@ -629,7 +655,7 @@ function renderBoard() {
   });
 
   const monopolies = computeMonopolies();
-  state.game.board.forEach(cell => {
+  g.board.forEach(cell => {
     const div = document.createElement('div');
     div.className = `cell ${cell.type}`;
     // 服务器 pos 为 0-based (0~10)，CSS Grid 线为 1-based (1~11)，必须 +1
@@ -747,7 +773,7 @@ function renderBoard() {
     <div class="bc-sub">大富翁在线</div>
     <div class="bc-dice">${dice ? `${faces[dice[0] - 1]}${faces[dice[1] - 1]} <b>${dice[0] + dice[1]}</b>` : '🎲🎲'}</div>
     <div class="bc-turn">${turnLine}</div>
-    <div class="bc-round">第 ${state.game.roundCount || 1}${state.game.maxRounds ? '/' + state.game.maxRounds : ''} 回合 · ${state.game.order.length} 人${state.game.startedAt ? ' · 已用 ' + fmtElapsed(state.game.startedAt) : ''}</div>
+    <div class="bc-round">第 ${state.game.roundCount || 1}${state.game.maxRounds ? '/' + state.game.maxRounds : ''} 回合 · ${state.game.order.length} 人${state.game.startedAt ? ' · 已用 ' + fmtElapsed(state.game.startedAt) : ''}${state.replayIdx !== null ? ' · 🎥 回放中' : ''}</div>
     ${state.game.jackpot > 0 ? `<div class="bc-jackpot">🎁 停车场奖池 ¥${state.game.jackpot.toLocaleString()}</div>` : ''}
   `;
   els.board.appendChild(center);
@@ -1110,15 +1136,16 @@ function statusLine(p, isMe) {
 
 function renderPlayers() {
   if (!state.game) return;
+  const rg = displayGame();
   els.playersList.innerHTML = '';
-  const ordered = [...state.game.order].sort((a, b) => {
-    const pa = state.game.players[a], pb = state.game.players[b];
+  const ordered = [...rg.order].sort((a, b) => {
+    const pa = rg.players[a], pb = rg.players[b];
     return (pa && pa.bankrupt ? 1 : 0) - (pb && pb.bankrupt ? 1 : 0);
   });
   ordered.forEach(pid => {
-    const p = state.game.players[pid];
+    const p = rg.players[pid];
     if (!p) return;
-    const isCurrentTurn = state.game.order[state.game.turnIndex] === pid && state.game.started && !state.game.ended;
+    const isCurrentTurn = rg.order[rg.turnIndex] === pid && rg.started && !rg.ended;
     const isMe = pid === state.myToken;
     const isHost = pid === state.game.hostToken;
 
@@ -1364,7 +1391,8 @@ function showVictoryStats(winnerToken) {
         <tbody>${tableRows}</tbody>
       </table>
     `,
-    `<button class="btn btn-secondary" onclick="exportGameLog()">💾 导出对局记录</button>
+    `<button class="btn btn-secondary" onclick="openReplay()">🎥 回放本局</button>
+     <button class="btn btn-secondary" onclick="exportGameLog()">💾 导出对局记录</button>
      <button class="btn btn-primary" onclick="hideModal();socket.emit('reset')">🔄 开始新局</button>`
   );
   requestAnimationFrame(() => drawNwChart(document.getElementById('nwCanvas'), state.game ? (state.game.nwHistory || []) : []));
@@ -1699,7 +1727,7 @@ function openHelp() {
           <li>拍卖中按 <b>1 / 2 / 3</b> 快速加价 +100/+500/+1000</li>
           <li>带建筑的土地不能直接交易（经典规则：先卖建筑）；交易需<b>对方确认</b>后才生效</li>
           <li>银行房源有限：全图共 🏠×32 / 🏨×12，垄断者囤房可造成房源短缺</li>
-          <li>结算时可「💾 导出对局记录」</li>
+          <li>结算时可「💾 导出对局记录」；顶部「🎥 回放」可逐轮回看棋盘演变</li>
           <li>切到别的标签页时，标签标题会提示是否轮到你；顶部「📋 总览」可查看全局资产表</li>
           <li>「🏗 建设」「🏦 抵押」按钮会弹出选择列表，不用再满地图找格子</li>
         </ul>
@@ -1932,6 +1960,7 @@ function render() {
   if (me) els.myMoney.style.color = '';
 
   els.inviteBtn.style.display = state.game ? '' : 'none';
+  els.replayBtn.style.display = (state.game && state.game.started && (state.game.replay || []).length >= 2) ? '' : 'none';
   els.chartBtn.style.display = (state.game && state.game.started && (state.game.nwHistory || []).length >= 2) ? '' : 'none';
   els.overviewBtn.style.display = state.game && state.game.started ? '' : 'none';
   updateWindowTitle();
@@ -1963,6 +1992,41 @@ function updateWindowTitle() {
 }
 
 // ────────────────────────────────────────────────────────────
+// 对局回放（滑杆逐轮查看棋盘快照）
+function openReplay() {
+  const g = state.game;
+  const snaps = (g && g.replay) || [];
+  if (snaps.length < 2) { toast('至少打完 2 轮后才有回放', 'info'); return; }
+  state.replayIdx = snaps.length - 1;
+  hideModal();
+  render();
+  const banner = document.createElement('div');
+  banner.id = 'replayBanner';
+  banner.className = 'replay-banner';
+  banner.innerHTML = `
+    <span>🎥 对局回放 · 第 <b id="rpRound">${snaps[state.replayIdx].r}</b> 轮 / 共 ${snaps.length} 帧</span>
+    <input type="range" id="rpSlider" min="0" max="${snaps.length - 1}" value="${state.replayIdx}" style="flex:1;" />
+    <button class="btn btn-sm btn-secondary" id="rpExit">退出回放</button>`;
+  const section = document.querySelector('.board-section');
+  if (section) section.insertBefore(banner, section.firstChild);
+  const slider = document.getElementById('rpSlider');
+  slider.addEventListener('input', () => {
+    state.replayIdx = Number(slider.value);
+    document.getElementById('rpRound').textContent = snaps[state.replayIdx].r;
+    render();
+  });
+  document.getElementById('rpExit').addEventListener('click', exitReplay);
+}
+
+function exitReplay() {
+  state.replayIdx = null;
+  const b = document.getElementById('replayBanner');
+  if (b) b.remove();
+  render();
+}
+
+window.exitReplay = exitReplay;
+
 // 净资产趋势图
 // ────────────────────────────────────────────────────────────
 function drawNwChart(canvas, history) {

@@ -426,6 +426,7 @@ function client(url, name) {
   const winLog = T.state.logs.map(l => l.text).join('|');
   check('结束原因标注回合上限', winLog.includes('回合上限'));
   check('净资产历史已记录（≥2 轮）', Array.isArray(T.state.nwHistory) && T.state.nwHistory.length >= 2);
+  check('回放快照已记录（≥2 帧，含所有权）', Array.isArray(T.state.replay) && T.state.replay.length >= 2 && typeof T.state.replay[1].c[1][0] === 'string');
   check('落地热度已记录（≥1 格）', T.state.landingStats && Object.keys(T.state.landingStats).length >= 1);
 
   // ── v2.5：服务器重启房间恢复 ──
@@ -445,6 +446,7 @@ function client(url, name) {
   check('重启后奖池保留', T3.state && T3.state.jackpot === jackpotAtEnd);
   check('重启后结束状态与胜者保留', T3.state && T3.state.ended === true && T3.state.winnerToken === 'tok_t2____2');
   check('重启后净资产历史保留', T3.state && Array.isArray(T3.state.nwHistory) && T3.state.nwHistory.length >= 2);
+  check('重启后回放快照保留', T3.state && Array.isArray(T3.state.replay) && T3.state.replay.length >= 2);
   check('重启后落地热度保留', T3.state && T3.state.landingStats && Object.keys(T3.state.landingStats).length >= 1);
   check('重启后房间设置保留', T3.state && T3.state.settings && T3.state.settings.startMoney === 20000);
   // ── v2.25/2.26：自动购买 + 赌坊（独立房间、轮询自愈，放最后避免干扰流程）──

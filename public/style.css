@@ -1155,3 +1155,17 @@ tr.ov-group td { font-weight: 800; color: var(--text-secondary); background: var
 /* v2.26: casino cell */
 .cell.casino { background: #f8e9f7; }
 .cell.casino .cell-icon { font-size: 13px; }
+
+
+/* v2.27: replay banner */
+.replay-banner {
+  display: flex; align-items: center; gap: 10px;
+  background: linear-gradient(135deg, rgba(206, 147, 216, 0.18), rgba(79, 195, 247, 0.14));
+  border: 1px solid var(--accent-info);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+  z-index: 5;
+}
