@@ -488,6 +488,31 @@ function client(url, name) {
   ok = await waitCond(() => T.state.board[1].owner === 'tok_t1____1');
   check('自动购买落地即买（丐帮 ¥400）', ok && T.state.players['tok_t1____1'].money === f1money - 400);
 
+  // ── v2.28：房间密码 ──
+  const pwdRoom = 'pwd_' + Date.now().toString(36);
+  const P1 = client(URL2, 'PW1');
+  const P2 = client(URL2, 'PW2');
+  let pwdRooms = null;
+  P1.socket.on('roomList', l => { pwdRooms = l; });
+  P1.socket.on('connect', () => P1.socket.emit('join', { roomId: pwdRoom, name: 'PW1', token: 'tok_pw1___1' }));
+  await sleep(500);
+  P1.socket.emit('setSettings', { password: 'abc123' });
+  await sleep(400);
+  P1.socket.emit('getRooms');
+  await sleep(300);
+  const pwdInfo = (pwdRooms || []).find(r => r.id === pwdRoom);
+  check('密码房 locked 标记下发', !!pwdInfo && pwdInfo.locked === true);
+  // 无密码加入 → 被拒（玩家列表为空）
+  P2.socket.emit('join', { roomId: pwdRoom, name: 'PW2', token: 'tok_pw2___2' });
+  await sleep(500);
+  const rejected = !(P1.state.players['tok_pw2___2']);
+  check('错误（无）密码加入被拒', rejected);
+  // 带正确密码加入 → 成功
+  P2.socket.emit('join', { roomId: pwdRoom, name: 'PW2', token: 'tok_pw2___2', password: 'abc123' });
+  await sleep(500);
+  check('正确密码加入成功', !!(P1.state.players['tok_pw2___2']));
+  P1.socket.close(); P2.socket.close();
+
   // ── v2.26：赌坊（五五开 ±¥360）──
   T.socket.emit('testHook', { op: 'teleport', pos: 36 });
   await sleep(250);

@@ -331,12 +331,15 @@ function joinRoom(roomId) {
   state.victoryShown = false;
   state.game = null;
   localStorage.setItem('monopoly_room', roomId);
+  const pwdInput = document.getElementById('joinPwdInput');
   socket.emit('join', {
     roomId,
     name: localStorage.getItem('monopoly_name') || getName(),
     avatar: localStorage.getItem('monopoly_avatar') || PLAYER_AVATARS[0],
     token: state.myToken,
+    password: pwdInput && pwdInput.value ? pwdInput.value.trim() : undefined,
   });
+  if (pwdInput) pwdInput.value = '';
 }
 
 function goBackToLobby() {
@@ -1646,6 +1649,14 @@ function openSettings() {
           }).join('')}
         </select>
       </div>
+      ${(!state.game || (state.game.hostToken === state.myToken && !state.game.started)) ? `
+      <div class="setting-item">
+        <label>🔒 房间密码（4~12位字母数字，留空保存=取消密码）</label>
+        <span style="display:flex;gap:4px;align-items:center;">
+          <input type="text" id="roomPwdInput" maxlength="12" placeholder="${(state.game && state.game.password) ? '已设置' : '未设置'}"
+            style="background:var(--bg-darker);color:var(--text-primary);border:1px solid var(--border-dark);border-radius:6px;padding:6px;width:130px;">
+        </span>
+      </div>` : ''}
       <div class="setting-item">
         <label>音效</label>
         <label class="toggle"><input type="checkbox" id="soundInput" ${Sound.enabled ? 'checked' : ''}><span class="slider"></span></label>
@@ -1675,6 +1686,9 @@ window.saveSettings = function() {
     localStorage.setItem('monopoly_sound', soundOn ? 'on' : 'off');
   }
   if (typeof autoBuyOn === 'boolean') socket.emit('setAutoBuy', { on: autoBuyOn });
+  const roomPwd = document.getElementById('roomPwdInput');
+  if (roomPwd && roomPwd.value.trim() !== '') socket.emit('setSettings', { password: roomPwd.value.trim() });
+  if (roomPwd) roomPwd.value = '';
   if (els.lobbyName) els.lobbyName.value = name || '';
   state.selectedAvatar = avatar || state.selectedAvatar;
   renderAvatarGrid();
@@ -1899,7 +1913,7 @@ function renderLobbyRooms() {
     const div = document.createElement('div');
     div.className = 'lobby-room-item';
     div.innerHTML = `
-      <span class="lr-id">🏠 ${escapeHtml(r.id)}</span>
+      <span class="lr-id">🏠 ${escapeHtml(r.id)}${r.locked ? ' 🔒' : ''}</span>
       <span class="lr-meta">${r.mapName || '经典版'} · ${r.playerCount}/8 人 ${r.started ? '· 游戏中' : r.ended ? '· 已结束' : '· 等待中'}${r.spectators > 0 ? ` · 👀${r.spectators}` : ''}</span>
     `;
     const btn = document.createElement('button');

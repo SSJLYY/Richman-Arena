@@ -238,6 +238,7 @@ function createRoom(id, mapId = 'classic') {
     landingStats: {},      // 掷骰到访次数 {cellId: count}
     replay: [],            // 每轮棋盘快照（对局回放用）
     maxRent: null,         // 本局最大单笔租金 {amount,from,to,cell}
+    password: null,        // 房间密码（null = 公开）
     trade: null,           // 待确认交易 {seq,from,to,giveMoney,giveProps,getMoney,getProps,expiresAt}
     tradeSeq: 0,
     lastCard: null,        // 最近抽的卡 {type,text,by,ts}（前端弹卡展示）            // 筹钱期 {seq,playerId,amount,creditorId,reason,deadline}
@@ -482,6 +483,7 @@ function roomList() {
       ended: r.ended,
       spectators: Math.max(0, sockCount - humans),
       mapName: MAPS[r.mapId] ? MAPS[r.mapId].name : '经典版',
+      locked: !!r.password,
     };
   });
 }
@@ -1459,7 +1461,7 @@ io.on('connection', (socket) => {
 
   socket.on('getRooms', () => { safeEmit('roomList', roomList()); });
 
-  socket.on('join', ({ roomId, name, avatar, token }) => {
+  socket.on('join', ({ roomId, name, avatar, token, password }) => {
     if (!allowRate(socket, 'join', 6, 60000)) return safeEmit('msg', '操作过于频繁，稍后再试');
     if (!roomId || !name) return;
     roomId = String(roomId).slice(0, 24).trim() || 'room1';
@@ -1480,6 +1482,13 @@ io.on('connection', (socket) => {
 
     if (!rooms[roomId]) rooms[roomId] = createRoom(roomId);
     const room = rooms[roomId];
+
+    // 密码房：已持有席位的玩家（重连/刷新）豁免，新来者必须携带正确密码
+    if (room.password && !room.players[token]) {
+      if (String(password || '') !== room.password) {
+        return safeEmit('msg', '🔒 该房间已设密码，请向房主索取后重新加入');
+      }
+    }
 
     let player = room.players[token];
     if (player) {
@@ -1909,7 +1918,7 @@ io.on('connection', (socket) => {
   });
 
   // 房间设置（房主，开局前）：起始资金/奖池开关/拍卖开关
-  socket.on('setSettings', ({ startMoney, jackpotOn, auctionOn, map, randomFirst, turnTimeoutMs }) => {
+  socket.on('setSettings', ({ startMoney, jackpotOn, auctionOn, map, randomFirst, turnTimeoutMs, password }) => {
     const room = rooms[socket.roomId];
     if (!room || room.started || room.ended) return;
     const token = socketToken[socket.id];
@@ -1921,6 +1930,18 @@ io.on('connection', (socket) => {
     if (typeof jackpotOn === 'boolean') room.settings.jackpotOn = jackpotOn;
     if (typeof auctionOn === 'boolean') room.settings.auctionOn = auctionOn;
     if (typeof randomFirst === 'boolean') room.settings.randomFirst = randomFirst;
+    if (password !== undefined) {
+      const pwd = String(password).trim().slice(0, 12);
+      if (pwd === '') {
+        room.password = null;
+        log(room, '🔓 房主取消了房间密码');
+      } else if (/^[A-Za-z0-9]{4,12}$/.test(pwd)) {
+        room.password = pwd;
+        log(room, '🔒 房主设置了房间密码');
+      } else {
+        return safeEmit('msg', '密码需为 4~12 位字母或数字');
+      }
+    }
     if (turnTimeoutMs !== undefined && [30000, 60000, 120000].includes(Number(turnTimeoutMs))) room.settings.turnTimeoutMs = Number(turnTimeoutMs);
     if (map !== undefined && MAPS[String(map)] && room.mapId !== String(map)) {
       room.mapId = String(map);
@@ -2121,6 +2142,29 @@ function leaveRoom(socket, reason, graceful = false) {
 // ============================================================
 // HEALTH CHECK, TURN TIMEOUT & IDLE ROOM CLEANUP
 // ============================================================
+app.get('/stats', (req, res) => {
+  let onlineHumans = 0, onlineBots = 0, playing = 0;
+  Object.values(rooms).forEach(r => {
+    r.order.forEach(t => {
+      const p = r.players[t];
+      if (!p) return;
+      if (p.isBot) { if (!p.bankrupt) onlineBots++; }
+      else if (p.connected) onlineHumans++;
+    });
+    if (r.started && !r.ended) playing++;
+  });
+  res.json({
+    status: 'ok',
+    rooms: Object.keys(rooms).length,
+    playing,
+    humans: onlineHumans,
+    bots: onlineBots,
+    heapMB: Math.round(process.memoryUsage().heapUsed / 1048576),
+    uptimeSec: Math.round(process.uptime()),
+    ts: Date.now(),
+  });
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime(), rooms: Object.keys(rooms).length, ts: Date.now() });
 });
@@ -2168,5 +2212,5 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 server.listen(PORT, () => {
-   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.27 服务器已启动 → http://0.0.0.0:${PORT}`);
+   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.28 服务器已启动 → http://0.0.0.0:${PORT}`);
 });
