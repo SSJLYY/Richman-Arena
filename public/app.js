@@ -284,6 +284,10 @@ function init() {
   renderAvatarGrid();
   els.lobbyName.value = localStorage.getItem('monopoly_name') || '';
   els.joinRoomInput.value = localStorage.getItem('monopoly_room') || '';
+  // 版本号与 package.json 同步
+  fetch('/package.json').then(r => r.json()).then(p => {
+    document.querySelectorAll('#verLabel').forEach(el => { el.textContent = 'v' + p.version; });
+  }).catch(() => {});
   showView('lobby');
   socket.emit('getRooms');
   socket.emit('getStats', { name: localStorage.getItem('monopoly_name') || '' });
@@ -364,6 +368,10 @@ function goBackToLobby() {
   els.chatInput.value = '';
   localStorage.removeItem('monopoly_room');
   els.joinRoomInput.value = '';
+  // 版本号与 package.json 同步
+  fetch('/package.json').then(r => r.json()).then(p => {
+    document.querySelectorAll('#verLabel').forEach(el => { el.textContent = 'v' + p.version; });
+  }).catch(() => {});
   showView('lobby');
   socket.emit('getRooms');
   socket.emit('getStats', { name: localStorage.getItem('monopoly_name') || '' });
@@ -380,6 +388,10 @@ window.doLeaveRoom = function() {
   els.chatInput.value = '';
   localStorage.removeItem('monopoly_room');
   els.joinRoomInput.value = '';
+  // 版本号与 package.json 同步
+  fetch('/package.json').then(r => r.json()).then(p => {
+    document.querySelectorAll('#verLabel').forEach(el => { el.textContent = 'v' + p.version; });
+  }).catch(() => {});
   showView('lobby');
   socket.emit('getRooms');
   socket.emit('getStats', { name: localStorage.getItem('monopoly_name') || '' });
