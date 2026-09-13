@@ -496,6 +496,7 @@ function client(url, name) {
   T.socket.emit('testHook', { op: 'resolve', pos: 1 });
   ok = await waitCond(() => T.state.board[1].owner === 'tok_t1____1');
   check('自动购买落地即买（丐帮 ¥400）', ok && T.state.players['tok_t1____1'].money === f1money - 400);
+  check('购地追踪（propsBought=1）', T.state.players['tok_t1____1'].propsBought === 1);
 
   // ── v2.28：房间密码 ──
   const pwdRoom = 'pwd_' + Date.now().toString(36);

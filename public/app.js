@@ -1929,10 +1929,34 @@ function renderLobbyRooms() {
 socket.on('stats', (data) => {
   const list = data && data.top ? data.top : (Array.isArray(data) ? data : []);
   const mine = data && data.mine;
+  // 成就墙（8 枚：点亮 / 未解锁）
+  const ACHIEVEMENTS = [
+    { icon: '🥇', name: '首胜', desc: '赢下第一局', got: mine && mine.wins >= 1 },
+    { icon: '🏆', name: '五胜上将', desc: '累计 5 胜', got: mine && mine.wins >= 5 },
+    { icon: '🎖', name: '十局常客', desc: '累计 10 局', got: mine && mine.games >= 10 },
+    { icon: '💰', name: '家财万贯', desc: '巅峰净资产 ¥50,000', got: mine && mine.bestNet >= 50000 },
+    { icon: '🏦', name: '收租达人', desc: '生涯收租 ¥20,000', got: mine && (mine.rentEarned || 0) >= 20000 },
+    { icon: '🎲', name: '骰子狂人', desc: '生涯掷骰 200 次', got: mine && (mine.rolls || 0) >= 200 },
+    { icon: '🏗', name: '圈地运动', desc: '生涯购地 15 块', got: mine && (mine.propsBought || 0) >= 15 },
+    { icon: '🚔', name: '铁窗泪', desc: '入狱 3 次（也算成就）', got: mine && (mine.jailed || 0) >= 3 },
+  ];
+  const recentEl = document.getElementById('recentGames');
+  if (recentEl) {
+    const recent = (data && data.recent) || [];
+    recentEl.innerHTML = recent.length
+      ? recent.map(g2 => {
+          const d = new Date(g2.date);
+          const ds = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+          const mapName = { classic: '经典', china: '中国', wulin: '武林' }[g2.map] || g2.map;
+          return `<div class="stats-row"><span class="sr-rank">🎲</span><span class="sr-name">${escapeHtml(g2.winner || '无胜者')}</span><span class="sr-meta">${ds} · ${mapName} · ${g2.rounds}轮 · ${g2.players.length}人</span></div>`;
+        }).join('')
+      : '<p class="lobby-empty">暂无历史对局</p>';
+  }
   if (els.myStatsLine) {
-    els.myStatsLine.innerHTML = mine
-      ? `📊 我的战绩（${escapeHtml(mine.name)}）：${mine.wins} 胜 / ${mine.games} 局${mine.bestNet ? ' · 巅峰净资产 ¥' + mine.bestNet.toLocaleString() : ''}`
-      : '';
+    const base = mine ? `📊 我的战绩（${escapeHtml(mine.name)}）：${mine.wins} 胜 / ${mine.games} 局${mine.bestNet ? ' · 巅峰净资产 ¥' + mine.bestNet.toLocaleString() : ''}` : '输入昵称开始你的第一局，生涯成就将永久记录';
+    const wall = `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;">${ACHIEVEMENTS.map(a => `
+      <span class="ach ${a.got ? 'got' : 'locked'}" title="${a.name}：${a.desc}">${a.icon}<i>${a.name}</i></span>`).join('')}</div>`;
+    els.myStatsLine.innerHTML = (base ? base + '<br>' : '') + wall;
   }
   if (!els.lobbyStats) return;
   if (!list || !list.length) return;

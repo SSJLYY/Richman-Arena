@@ -261,6 +261,9 @@ function createPlayer(name, token, { isBot = false, avatar } = {}) {
     jailTurns: 0, bankrupt: false, properties: [],
     jailFreeCards: 0,
     rentEarned: 0,         // 累计租金收入
+    rollCount: 0,          // 本局掷骰次数
+    timesJailed: 0,        // 本局入狱次数
+    propsBought: 0,        // 本局购地次数
     autoBuy: false,        // 落地自动购买（个人偏好）
     rentPaid: 0,           // 累计租金支出
     avatar: avatar || PLAYER_AVATARS[Math.floor(Math.random() * PLAYER_AVATARS.length)],
@@ -365,10 +368,14 @@ function concludeGame(room, alive, winnerId, reasonText) {
   room.order.forEach(id => {
     const p = room.players[id];
     if (!p || p.isBot) return;
-    const s = stats[p.name] || (stats[p.name] = { games: 0, wins: 0, bestNet: 0 });
+    const s = stats[p.name] || (stats[p.name] = { games: 0, wins: 0, bestNet: 0, rentEarned: 0, rolls: 0, jailed: 0, propsBought: 0 });
     s.games++;
     if (winnerId && id === winnerId) s.wins++;
     s.bestNet = Math.max(s.bestNet, playerNetWorth(room, id));
+    s.rentEarned = (s.rentEarned || 0) + (p.rentEarned || 0);
+    s.rolls = (s.rolls || 0) + (p.rollCount || 0);
+    s.jailed = (s.jailed || 0) + (p.timesJailed || 0);
+    s.propsBought = (s.propsBought || 0) + (p.propsBought || 0);
   });
   saveStats();
   // 历史对局档案（保留最近 20 条）
@@ -758,6 +765,7 @@ function landOn(room, player, dice, opts = {}) {
           cell.level = 0;
           cell.mortgaged = false;
           player.properties.push(cell.id);
+          player.propsBought = (player.propsBought || 0) + 1;
           log(room, `🤖 ${player.name} 自动购买了 ${cell.name}（¥${cell.price}）`);
         }
       }
@@ -774,6 +782,7 @@ function landOn(room, player, dice, opts = {}) {
     case 'gotojail':
       player.pos = 10;
       player.jailTurns = JAIL_MAX_TURNS;
+      player.timesJailed = (player.timesJailed || 0) + 1;
       room.doubleCount = 0;
       log(room, `🚔 ${player.name} 被送进监狱！`);
       if (player.isBot) botSay(room, player, 'jail', 0.5);
@@ -837,6 +846,7 @@ function movePlayer(room, player, step, isDouble, dice) {
     log(room, `💰 ${player.name} 经过起点，获得 ¥${GO_SALARY}`);
   }
   room.landingStats[player.pos] = (room.landingStats[player.pos] || 0) + 1;
+  player.rollCount = (player.rollCount || 0) + 1;
   landOn(room, player, dice);
   if (player.bankrupt) { nextTurn(room); return; }
 
@@ -1067,6 +1077,7 @@ function resolveAuction(room) {
     cell.level = 0;
     cell.mortgaged = false;
     winner.properties.push(cell.id);
+    winner.propsBought = (winner.propsBought || 0) + 1;
     log(room, `🔨 ${winner.name} 以 ¥${a.topBid} 拍得「${cell.name}」！`);
     room.lastRentPaid = { cellId: cell.id, amount: a.topBid, ts: Date.now() };
     if (winner.isBot) botSay(room, winner, 'winAuc', 0.4);
@@ -1200,7 +1211,7 @@ function saveStats() {
 }
 function topStats(n = 10) {
   return Object.entries(stats)
-    .map(([name, s]) => ({ name, games: s.games, wins: s.wins, bestNet: s.bestNet }))
+    .map(([name, s]) => ({ name, games: s.games, wins: s.wins, bestNet: s.bestNet, rentEarned: s.rentEarned || 0 }))
     .sort((a, b) => b.wins - a.wins || b.bestNet - a.bestNet)
     .slice(0, n);
 }
@@ -1239,6 +1250,7 @@ function botTryBuy(room, bot) {
     cell.level = 0;
     cell.mortgaged = false;
     bot.properties.push(cell.id);
+    bot.propsBought = (bot.propsBought || 0) + 1;
     log(room, `🤖 ${bot.name} 购买了 ${cell.name}（¥${cell.price}）`);
     botSay(room, bot, ownsFullGroup(room, bot.id, cell.group) ? 'setDone' : 'buy', 0.3);
   } else {
@@ -1669,6 +1681,7 @@ io.on('connection', (socket) => {
     cell.level = 0;
     cell.mortgaged = false;
     player.properties.push(cell.id);
+    player.propsBought = (player.propsBought || 0) + 1;
     log(room, `🏠 ${player.name} 购买了 ${cell.name}（¥${cell.price}）`);
     broadcast(room.id);
   });
@@ -1858,7 +1871,11 @@ io.on('connection', (socket) => {
   // 大厅排行榜
   socket.on('getStats', ({ name } = {}) => {
     const n = String(name || '').slice(0, 16);
-    const mine = n && stats[n] ? { name: n, games: stats[n].games, wins: stats[n].wins, bestNet: stats[n].bestNet } : null;
+    const mine = n && stats[n] ? {
+      name: n, games: stats[n].games, wins: stats[n].wins, bestNet: stats[n].bestNet,
+      rentEarned: stats[n].rentEarned || 0, rolls: stats[n].rolls || 0,
+      jailed: stats[n].jailed || 0, propsBought: stats[n].propsBought || 0,
+    } : null;
     safeEmit('stats', { top: topStats(), mine, recent: recentGames.slice(-8).reverse() });
   });
 
@@ -2230,5 +2247,5 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 server.listen(PORT, () => {
-   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.29 服务器已启动 → http://0.0.0.0:${PORT}`);
+   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.30 服务器已启动 → http://0.0.0.0:${PORT}`);
 });

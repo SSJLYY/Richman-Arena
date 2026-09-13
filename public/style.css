@@ -1169,3 +1169,14 @@ tr.ov-group td { font-weight: 800; color: var(--text-secondary); background: var
   margin-bottom: 10px;
   z-index: 5;
 }
+
+
+/* v2.30: achievement wall */
+.ach {
+  display: inline-flex; align-items: center; gap: 3px;
+  border-radius: 999px; padding: 2px 8px 2px 5px;
+  font-size: 11px; font-style: normal;
+}
+.ach i { font-style: normal; }
+.ach.got { background: linear-gradient(135deg, rgba(255, 215, 79, 0.22), rgba(255, 171, 64, 0.3)); color: var(--text-primary); border: 1px solid rgba(255, 213, 79, 0.6); }
+.ach.locked { background: var(--bg-board); color: var(--text-tertiary); border: 1px solid var(--border-dark); opacity: 0.65; filter: grayscale(0.8); }
