@@ -1205,6 +1205,7 @@ function renderControls() {
     if (!state.victoryShown) {
       state.victoryShown = true;
       showVictoryStats(winner);
+      confettiBurst();
     }
   } else if (idlePhase) {
     hint = isHost
@@ -1258,6 +1259,26 @@ function renderControls() {
 }
 
 // 结算统计面板：按净资产排名
+function confettiBurst() {
+  const layer = document.createElement('div');
+  layer.className = 'confetti-layer';
+  const colors = ['#ff6b6b', '#4fc3f7', '#69f0ae', '#ffb74d', '#ce93d8', '#f06292', '#ffd54f'];
+  for (let i = 0; i < 80; i++) {
+    const p = document.createElement('div');
+    p.className = 'confetti-piece';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.background = colors[Math.floor(Math.random() * colors.length)];
+    p.style.animationDelay = (Math.random() * 1.2) + 's';
+    p.style.animationDuration = (2.5 + Math.random() * 2) + 's';
+    const size = 6 + Math.random() * 7;
+    p.style.width = size + 'px';
+    p.style.height = size * 0.6 + 'px';
+    layer.appendChild(p);
+  }
+  document.body.appendChild(layer);
+  setTimeout(() => layer.remove(), 5200);
+}
+
 function showVictoryStats(winnerToken) {
   const g = state.game;
   const rows = g.order.map(pid => {
@@ -1791,6 +1812,27 @@ socket.on('roomList', (list) => {
   renderLobbyRooms();
 });
 
+function renderRejoinBanner() {
+  if (!els.lobbyRoomList) return;
+  const saved = localStorage.getItem('monopoly_room');
+  const r = saved && lastRooms.find(x => x.id === saved && x.started && !x.ended);
+  let el = document.getElementById('rejoinBanner');
+  if (r && !el) {
+    el = document.createElement('div');
+    el.id = 'rejoinBanner';
+    el.className = 'rejoin-banner';
+    el.innerHTML = `<span>🎮 你在房间 <b>${escapeHtml(r.id)}</b> 的对局还在进行中</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm btn-primary';
+    btn.textContent = '重连上一局';
+    btn.onclick = () => joinRoom(r.id);
+    el.appendChild(btn);
+    els.lobbyRoomList.parentElement.insertBefore(el, els.lobbyRoomList);
+  } else if (!r && el) {
+    el.remove();
+  }
+}
+
 function renderLobbyRooms() {
   if (!els.lobbyRoomList || state.view !== 'lobby') return;
   const list = lastRooms.filter(r => r.playerCount > 0);
@@ -1810,6 +1852,7 @@ function renderLobbyRooms() {
     div.appendChild(btn);
     els.lobbyRoomList.appendChild(div);
   });
+  renderRejoinBanner();
 }
 
 socket.on('stats', (data) => {

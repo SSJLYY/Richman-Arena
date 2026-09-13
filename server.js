@@ -881,6 +881,8 @@ function startAuction(room, cellId, initiatorName) {
     endsAt: Date.now() + AUCTION_MS,
   };
   log(room, `🔨 ${initiatorName} 放弃购买，「${cell.name}」进入拍卖！出价最高者得（¥${BID_STEP} 起）`);
+  const talker = room.order.map(t => room.players[t]).find(p => p && p.isBot && !p.bankrupt);
+  if (talker) botSay(room, talker, 'auction', 0.3);
   broadcast(room.id);
   scheduleBotBids(room);
   scheduleAuctionResolve(room);
@@ -980,6 +982,7 @@ function resolveAuction(room) {
     cell.mortgaged = false;
     winner.properties.push(cell.id);
     log(room, `🔨 ${winner.name} 以 ¥${a.topBid} 拍得「${cell.name}」！`);
+    if (winner.isBot) botSay(room, winner, 'winAuc', 0.4);
   } else {
     log(room, `🔨 「${cell.name}」无人出价，流拍`);
   }
@@ -1182,6 +1185,8 @@ const BOT_LINES = {
   setDone:  ['集齐啦！哈哈哈！', '成套成套～', '这一片都是我的了。'],
   propose:  ['卖吗卖吗？', '这价钱够意思了吧。', '我可是很有诚意的。'],
   deal:     ['成交！嘿嘿。', '合作愉快～', '早卖早享受。'],
+  auction:  ['这块地我要定了！', '都别跟我抢！', '让我看看值多少…', '加价！加价！'],
+  winAuc:   ['拍到手了！', '物有所值。', '嘿嘿，又添一块。'],
   refuse:   ['这个价钱可不行。', '不卖不卖。', '再想想吧。', '亏本买卖我不做。'],
   win:      ['承让承让。', '基本操作，都坐好。'],
   bankrupt: ['我还会回来的！', '……下次一定。'],
@@ -2074,5 +2079,5 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 server.listen(PORT, () => {
-   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.21 服务器已启动 → http://0.0.0.0:${PORT}`);
+   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.22 服务器已启动 → http://0.0.0.0:${PORT}`);
 });
