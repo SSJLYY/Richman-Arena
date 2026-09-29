@@ -1,0 +1,189 @@
+/* ============================================================
+   tokens.css — 设计令牌 / 双主题（深色玻璃 · 浅色玻璃）
+   ------------------------------------------------------------
+   规则：主题色只允许在本文件里出现。任何组件样式（controls /
+   panels / board / lobby）必须引用变量，不得写死颜色，
+   否则浅色主题会出现断层。
+   例外：棋盘（board.css 的 --board-*）两套主题都保持浅色经典
+   印刷风，是有意的对比层，不参与换肤。
+   ============================================================ */
+
+/* ---------- 几何 / 动效 / 排版（与主题无关） ---------- */
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC',
+    'Noto Sans CJK SC', 'WenQuanYi Micro Hei', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --radius-xs: 5px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 26px;
+  --radius-pill: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --blur-card: 18px;
+  --blur-panel: 14px;
+  --blur-modal: 28px;
+  --blur-wide: 40px;
+
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+  --transition-slow: 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+
+  /* 玩家配色（与 app.js PLAYER_COLORS 一一对应；主题间保持稳定，棋子/色条靠它辨识） */
+  --player-0: #e74c3c;
+  --player-1: #3498db;
+  --player-2: #2ecc71;
+  --player-3: #f39c12;
+  --player-4: #9b59b6;
+  --player-5: #1abc9c;
+  --player-6: #e67e22;
+  --player-7: #95a5a6;
+}
+
+/* ---------- 深色玻璃（默认） ---------- */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --page-base: #070b1c;
+  --ambient-1: rgba(77, 163, 255, 0.34);
+  --ambient-2: rgba(255, 171, 64, 0.2);
+  --ambient-3: rgba(160, 108, 255, 0.26);
+  --ambient-4: rgba(45, 212, 191, 0.16);
+  --grain-opacity: 0.05;
+
+  /* 玻璃面：越靠上越实 */
+  --glass-1: rgba(255, 255, 255, 0.06);
+  --glass-2: rgba(255, 255, 255, 0.1);
+  --glass-3: rgba(255, 255, 255, 0.16);
+  --glass-input: rgba(6, 10, 26, 0.42);
+  --glass-stroke: rgba(255, 255, 255, 0.14);
+  --glass-stroke-soft: rgba(255, 255, 255, 0.07);
+  --glass-edge-top: rgba(255, 255, 255, 0.3);
+  --glass-spec: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 46%);
+
+  --text-primary: #eaf0ff;
+  --text-secondary: #a8b3cf;
+  --text-tertiary: #7b87a6;
+  --text-inverse: #0a0e27;
+
+  --accent-primary: #5aa9ff;
+  --accent-primary-hover: #78baff;
+  --accent-success: #4fd07a;
+  --accent-success-hover: #6ade90;
+  --accent-warning: #ffb648;
+  --accent-warning-hover: #ffc76e;
+  --accent-danger: #ff6070;
+  --accent-danger-hover: #ff7d8a;
+  --accent-info: #45c4f0;
+  --accent-gold: #ffd54f;
+  --on-accent: #08101f;
+
+  --scrim: rgba(4, 7, 18, 0.66);
+  --ring: rgba(90, 169, 255, 0.45);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-glass: 0 8px 26px rgba(0, 0, 0, 0.32);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 22px 60px rgba(0, 0, 0, 0.52);
+  --glow-accent: 0 0 18px rgba(90, 169, 255, 0.4);
+  --glow-gold: 0 0 18px rgba(255, 213, 79, 0.45);
+
+  /* 遗留变量名 —— app.js 内联模板仍在使用，必须跟随主题 */
+  --bg-darker: rgba(6, 10, 26, 0.5);
+}
+
+/* ---------- 浅色玻璃 ---------- */
+[data-theme='light'] {
+  color-scheme: light;
+
+  --page-base: #e8eefb;
+  --ambient-1: rgba(96, 165, 250, 0.5);
+  --ambient-2: rgba(255, 190, 120, 0.42);
+  --ambient-3: rgba(186, 150, 255, 0.42);
+  --ambient-4: rgba(110, 231, 183, 0.4);
+  --grain-opacity: 0.035;
+
+  --glass-1: rgba(255, 255, 255, 0.58);
+  --glass-2: rgba(255, 255, 255, 0.74);
+  --glass-3: rgba(255, 255, 255, 0.88);
+  --glass-input: rgba(255, 255, 255, 0.7);
+  --glass-stroke: rgba(255, 255, 255, 0.85);
+  --glass-stroke-soft: rgba(23, 40, 80, 0.08);
+  --glass-edge-top: rgba(255, 255, 255, 0.95);
+  --glass-spec: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 50%);
+
+  --text-primary: #16203c;
+  --text-secondary: #47547a;
+  --text-tertiary: #5a6789;
+  --text-inverse: #ffffff;
+
+  --accent-primary: #1f6fd0;
+  --accent-primary-hover: #185aa9;
+  --accent-success: #159a52;
+  --accent-success-hover: #0f7c41;
+  --accent-warning: #c8730a;
+  --accent-warning-hover: #a95f04;
+  --accent-danger: #dc3a52;
+  --accent-danger-hover: #b92940;
+  --accent-info: #0d84ba;
+  --accent-gold: #b8860b;
+  --on-accent: #ffffff;
+
+  --scrim: rgba(190, 205, 232, 0.55);
+  --ring: rgba(31, 111, 208, 0.35);
+  --shadow-sm: 0 2px 8px rgba(23, 40, 80, 0.08);
+  --shadow-glass: 0 8px 26px rgba(23, 40, 80, 0.12);
+  --shadow-lg: 0 10px 30px rgba(23, 40, 80, 0.14);
+  --shadow-xl: 0 22px 60px rgba(23, 40, 80, 0.2);
+  --glow-accent: 0 0 16px rgba(31, 111, 208, 0.28);
+  --glow-gold: 0 0 16px rgba(184, 134, 11, 0.3);
+
+  --bg-darker: rgba(255, 255, 255, 0.7);
+}
+
+/* ---------- 棋盘不参与换肤（两套主题都是浅色经典） ---------- */
+:root {
+  --board-face: #ffffff;
+  --board-face-corner: #f5f5f5;
+  --board-ink: #333333;
+  --board-ink-soft: #666666;
+  --board-frame: #8d6e63;
+  --board-lawn: #34495e;
+  --board-chip: rgba(20, 26, 44, 0.78);
+}
+
+/* ---------- 毛玻璃强度：低端设备 / 晕染敏感可关 ---------- */
+[data-glass='soft'] {
+  --blur-card: 8px;
+  --blur-panel: 6px;
+  --blur-modal: 12px;
+  --blur-wide: 14px;
+}
+[data-glass='off'] {
+  --blur-card: 0px;
+  --blur-panel: 0px;
+  --blur-modal: 0px;
+  --blur-wide: 0px;
+  --glass-1: #161d38;
+  --glass-2: #1e2647;
+  --glass-3: #27304f;
+  --glass-input: #0b1023;
+  --glass-spec: none;
+}
+[data-glass='off'][data-theme='light'] {
+  --glass-1: #f4f7fd;
+  --glass-2: #ffffff;
+  --glass-3: #ffffff;
+  --glass-input: #ffffff;
+  --glass-spec: none;
+}

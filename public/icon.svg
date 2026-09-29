@@ -1,5 +1,59 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <rect width="128" height="128" rx="26" fill="#1a1f36"/>
-  <rect x="10" y="10" width="108" height="108" rx="20" fill="none" stroke="#e74c3c" stroke-width="5"/>
-  <text x="64" y="88" font-size="66" text-anchor="middle">🎲</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="大富翁在线">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#131c3a"/>
+      <stop offset="1" stop-color="#0b1226"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2=".6" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".2"/>
+      <stop offset=".55" stop-color="#fff" stop-opacity=".04"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="halo">
+      <stop offset="0" stop-color="#ffd54f" stop-opacity=".3"/>
+      <stop offset=".6" stop-color="#5aa9ff" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#5aa9ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="fTop" x1="0" y1="0" x2=".9" y2="1">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#eaf0fd"/>
+    </linearGradient>
+    <linearGradient id="fLeft" x1="0" y1="0" x2=".4" y2="1">
+      <stop offset="0" stop-color="#c4d2ee"/>
+      <stop offset="1" stop-color="#9cb1d9"/>
+    </linearGradient>
+    <linearGradient id="fRight" x1=".1" y1="0" x2=".8" y2="1">
+      <stop offset="0" stop-color="#f7f9ff"/>
+      <stop offset="1" stop-color="#d6e1f7"/>
+    </linearGradient>
+    <linearGradient id="pip" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5aa9ff"/>
+      <stop offset="1" stop-color="#1f6fd0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 圆角玻璃底板（自带背景，深浅标签页通用） -->
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <rect width="128" height="128" rx="28" fill="url(#sheen)"/>
+  <rect x="2" y="2" width="124" height="124" rx="26" fill="none" stroke="#5aa9ff" stroke-opacity=".38" stroke-width="3"/>
+  <circle cx="64" cy="62" r="52" fill="url(#halo)"/>
+  <ellipse cx="64" cy="112" rx="32" ry="6" fill="#040814" opacity=".45"/>
+
+  <!-- 立体骰子 -->
+  <path d="M64 22 L104 44 L64 66 L24 44 Z" fill="url(#fTop)"/>
+  <path d="M24 44 L64 66 L64 108 L24 86 Z" fill="url(#fLeft)"/>
+  <path d="M64 66 L104 44 L104 86 L64 108 Z" fill="url(#fRight)"/>
+  <path d="M24 44 L64 66 L104 44 M64 66 L64 108" fill="none" stroke="#6f8bbd" stroke-opacity=".5" stroke-width="1.5"/>
+  <path d="M64 22 L104 44 L104 86 L64 108 L24 86 L24 44 Z" fill="none" stroke="#ffd54f" stroke-width="3" stroke-linejoin="round"/>
+
+  <!-- 点数：顶 3 蓝、左 2 金、右 1 蓝 -->
+  <ellipse cx="44" cy="44" rx="5.4" ry="3.4" fill="url(#pip)"/>
+  <ellipse cx="64" cy="44" rx="5.4" ry="3.4" fill="url(#pip)"/>
+  <ellipse cx="84" cy="44" rx="5.4" ry="3.4" fill="url(#pip)"/>
+  <circle cx="36" cy="64" r="4.8" fill="#ffd54f"/>
+  <circle cx="52" cy="88" r="4.8" fill="#ffd54f"/>
+  <circle cx="84" cy="76" r="5.2" fill="url(#pip)"/>
+
+  <!-- 金色火花高光 -->
+  <path d="M104 18 L106.5 24.5 L113 27 L106.5 29.5 L104 36 L101.5 29.5 L95 27 L101.5 24.5 Z" fill="#ffd54f"/>
 </svg>

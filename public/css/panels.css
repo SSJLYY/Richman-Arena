@@ -1,0 +1,580 @@
+/* panels.css — 对局侧栏 / 玩家列表 / 日志聊天 / 模态统计列表（毛玻璃层，深浅双主题通用） */
+
+/* ============================================================
+   1. 主布局（棋盘列 + 侧栏列）
+   ============================================================ */
+.main-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--space-5);
+  flex: 1;
+  overflow: hidden;
+  padding: 0 var(--space-6) var(--space-6);
+}
+@media (max-width: 1100px) {
+  .main-layout {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--space-3);
+  }
+}
+/* ============================================================
+   2. 侧栏容器 + 卡片三层玻璃
+   ============================================================ */
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  max-height: calc(100vh - 180px);
+  max-height: calc(100dvh - 180px); /* 移动地址栏伸缩时不裁掉底部（旧浏览器回退上一行） */
+  scrollbar-gutter: stable;
+  padding: 2px 2px var(--space-6);
+  /* 边缘淡出：遮罩只关心 alpha，用不透明文字令牌即可（无需写死黑色） */
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, var(--text-primary) 20px, var(--text-primary) calc(100% - 64px), transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0, var(--text-primary) 20px, var(--text-primary) calc(100% - 64px), transparent 100%);
+}
+
+.panel-card {
+  position: relative;
+  background: var(--glass-1);
+  backdrop-filter: blur(var(--blur-panel)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--blur-panel)) saturate(150%);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-glass), inset 0 1px 0 var(--glass-edge-top);
+}
+/* 顶层镜面反射（第二层玻璃） */
+.panel-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-spec);
+  pointer-events: none;
+}
+
+.panel-card h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.panel-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.panel-header h2 { margin-bottom: 0; }
+
+/* ============================================================
+   3. 玩家列表（对局信息密度最高的载体）
+   ============================================================ */
+.players-list { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.player-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--glass-1);
+  border: 1px solid var(--glass-stroke-soft);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-edge-top);
+  transition: var(--transition-fast);
+}
+.player-item:hover {
+  background: var(--glass-2);
+  border-color: var(--glass-stroke);
+  transform: translateY(-1px);
+}
+
+/* 当前回合：整行呼吸 + 左侧玩家色高亮条 */
+.player-item.active {
+  background: var(--glass-2);
+  background: color-mix(in srgb, var(--accent-primary) 16%, var(--glass-2));
+  border-color: var(--glass-stroke);
+  border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--glass-stroke));
+  box-shadow: var(--shadow-glass), inset 0 1px 0 var(--glass-edge-top);
+  animation: activeBreath 2.4s ease-in-out infinite;
+}
+.player-item.active::after {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 12%;
+  bottom: 12%;
+  width: 3px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(180deg, var(--accent-primary), var(--accent-info));
+  box-shadow: var(--glow-accent);
+}
+@keyframes activeBreath {
+  0%, 100% { box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-edge-top), 0 0 0 0 var(--ring); }
+  50% { box-shadow: var(--shadow-glass), inset 0 1px 0 var(--glass-edge-top), 0 0 0 4px var(--ring); }
+}
+
+.player-dot {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  flex-shrink: 0;
+  border: 1px solid var(--glass-stroke);
+  /* 光晕跟随 currentColor：JS 为色点设置 color 后即为玩家色 */
+  box-shadow: var(--shadow-sm), 0 0 0 3px var(--glass-stroke-soft);
+}
+.player-item.active .player-dot {
+  border-width: 2px;
+  animation: active-glow 1.6s ease-in-out infinite;
+}
+@keyframes active-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 2px var(--ring), 0 0 0 0 var(--ring);
+  }
+  50% {
+    box-shadow: 0 0 0 2px var(--ring), 0 0 14px 4px var(--ring);
+    box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 55%, transparent),
+                0 0 16px 5px color-mix(in srgb, currentColor 45%, transparent);
+  }
+}
+
+.player-info { flex: 1; min-width: 0; }
+.player-name {
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* 文字恒用主题主色保证浅主题对比度；玩家色归 .player-dot 承担。
+     !important 用于压过 app.js 注入的行内玩家色 */
+  color: var(--text-primary) !important;
+}
+.player-status {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.player-money {
+  font-weight: 700;
+  font-size: 13px;
+  min-width: 64px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.2px;
+  text-shadow: 0 1px 2px var(--scrim);
+}
+
+/* 破产：只降存在感，不改布局 */
+.player-item.bankrupt {
+  opacity: 0.45;
+  filter: grayscale(0.8);
+  animation: none;
+}
+.player-item.bankrupt:hover { opacity: 0.7; filter: grayscale(0.4); }
+
+/* ============================================================
+   4. 日志 / 聊天（内嵌玻璃井）
+   ============================================================ */
+.log-container {
+  max-height: 280px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.55;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-secondary);
+  background: var(--glass-input);
+  border: 1px solid var(--glass-stroke-soft);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 3px 14px var(--scrim), inset 0 0 0 1px var(--glass-stroke-soft);
+}
+.log-entry {
+  margin-bottom: 2px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--glass-stroke-soft);
+  animation: logIn 0.28s ease;
+}
+.log-entry:last-child { border-bottom-color: transparent; }
+.log-entry.game { color: var(--text-primary); }
+.log-entry.system { color: var(--text-tertiary); font-style: italic; }
+.log-entry .log-time {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-right: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+.log-entry .log-from { font-weight: 700; margin-right: var(--space-1); }
+.log-entry.game .log-from { color: var(--accent-warning); }
+.log-entry.chat .log-from { color: var(--accent-info); }
+@keyframes logIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 输入 + 发送 = 一体化玻璃胶囊 */
+.chat-input-area {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-top: var(--space-3);
+  padding: 3px;
+  background: var(--glass-1);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 2px 8px var(--scrim);
+  transition: var(--transition-fast);
+}
+.chat-input-area:focus-within {
+  border-color: var(--accent-primary);
+  border-color: color-mix(in srgb, var(--accent-primary) 55%, var(--glass-stroke));
+  box-shadow: inset 0 2px 8px var(--scrim), 0 0 0 3px var(--ring);
+}
+#chatInput {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 14px;
+  border: none;
+  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  resize: none;
+}
+#chatInput::placeholder { color: var(--text-tertiary); }
+.chat-input-area .btn {
+  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+  padding: 8px 18px;
+}
+
+/* 快捷表情：玻璃圆形胶囊 */
+.quick-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+.quick-reactions button {
+  flex: 1;
+  aspect-ratio: 1;
+  max-width: 40px;
+  padding: 2px;
+  line-height: 1;
+  font-size: 16px;
+  cursor: pointer;
+  border: 1px solid var(--glass-stroke-soft);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--text-primary) 8%, var(--page-base));
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-edge-top);
+  transition: var(--transition-fast);
+}
+.quick-reactions button:hover {
+  background: var(--glass-3);
+  border-color: var(--glass-stroke);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glass), inset 0 1px 0 var(--glass-edge-top);
+}
+.quick-reactions button:active { transform: scale(0.9); }
+
+/* ============================================================
+   5. 模态 / 列表通用玻璃行（战绩、资产、成就）
+   ============================================================ */
+.stats-list { display: flex; flex-direction: column; gap: var(--space-1); }
+.stats-row,
+.pm-prop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 5px var(--space-2);
+  font-size: 12px;
+  background: var(--glass-1);
+  border: 1px solid var(--glass-stroke-soft);
+  border-radius: var(--radius-sm);
+  transition: var(--transition-fast);
+}
+.stats-row:nth-child(even),
+.pm-prop:nth-child(even) { background: var(--glass-2); }
+.stats-row:hover,
+.pm-prop:hover { background: var(--glass-3); border-color: var(--glass-stroke); }
+
+.sr-rank { width: 26px; text-align: center; font-variant-numeric: tabular-nums; }
+.sr-name { font-weight: 700; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-meta,
+.pm-meta {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.pm-prop { font-size: 12.5px; }
+.pm-name { font-weight: 700; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* JS 注入底色的色块：只管描边 / 圆角 / 阴影 */
+.pm-chip {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--glass-stroke);
+  box-shadow: var(--shadow-sm);
+}
+.ov-chip {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: var(--space-2);
+  vertical-align: middle;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--glass-stroke);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 表格：表头毛玻璃 + 隔行微亮 + 行 hover */
+.stats-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: var(--text-secondary);
+  background: var(--glass-2);
+  backdrop-filter: blur(var(--blur-panel)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--blur-panel)) saturate(140%);
+  border-bottom: 1px solid var(--glass-stroke);
+  font-variant-numeric: tabular-nums;
+}
+.stats-table tbody tr:nth-child(even) { background: var(--glass-1); }
+.stats-table tbody tr:hover { background: var(--glass-2); }
+.stats-table tbody tr td { font-variant-numeric: tabular-nums; }
+
+/* 地产总览分组行 */
+.stats-table tbody tr.ov-group td,
+tr.ov-group td {
+  font-weight: 800;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  background: var(--glass-2);
+  backdrop-filter: blur(var(--blur-panel)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--blur-panel)) saturate(140%);
+  border-bottom: 1px solid var(--glass-stroke-soft);
+}
+
+/* ============================================================
+   6. 收集套系胶囊 / 拍卖副行 / 奖项 / 成就墙
+   ============================================================ */
+.group-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+.gchip {
+  /* 底色由 JS 按地产组 / 玩家色注入，这里只保证文字对比与玻璃描边 */
+  padding: 1px 7px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.5;
+  white-space: nowrap;
+  /* 地产组色都是浅亮色，文字恒为深色；玩家纯色块用 .solid 走白字 */
+  color: #10131f;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-stroke-soft);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-edge-top);
+}
+.gchip.solid { color: #fff; }
+.gchip.near {
+  outline: 1.5px dashed var(--accent-gold);
+  outline: 1.5px dashed color-mix(in srgb, var(--accent-gold) 85%, transparent);
+  outline-offset: -1px;
+}
+.gchip.full {
+  box-shadow: 0 0 0 1.5px var(--accent-gold);
+  animation: chipPulse 1.6s infinite;
+}
+@keyframes chipPulse {
+  0%, 100% { box-shadow: 0 0 0 1px var(--accent-gold); }
+  50% { box-shadow: 0 0 0 1px var(--accent-gold), 0 0 8px 2px var(--glow-gold); }
+}
+
+/* 拍卖面板副信息行（与 ap-head / ap-body 同属一层玻璃） */
+.ap-rent,
+.ap-history {
+  padding: 2px var(--space-3) 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-top: 1px solid var(--glass-stroke-soft);
+}
+.ap-rent { font-variant-numeric: tabular-nums; }
+.ap-history { padding-bottom: var(--space-2); color: var(--text-tertiary); }
+
+.award-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 5px var(--space-3);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  /* 成就墙一次可出现十余枚胶囊，逐个 blur 开销大 → 自稳半透明实色 */
+  background: color-mix(in srgb, var(--text-primary) 10%, var(--page-base));
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-edge-top);
+}
+
+/* 成就墙 */
+.ach {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px var(--space-2) 2px 5px;
+  font-size: 11px;
+  font-style: normal;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-stroke-soft);
+  box-shadow: inset 0 1px 0 var(--glass-edge-top);
+}
+.ach i { font-style: normal; }
+.ach.got {
+  color: var(--text-primary);
+  background: var(--glass-2);
+  background: color-mix(in srgb, var(--accent-gold) 22%, var(--glass-2));
+  border-color: color-mix(in srgb, var(--accent-gold) 60%, var(--glass-stroke));
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-edge-top);
+}
+.ach.locked {
+  color: var(--text-tertiary);
+  background: var(--glass-1);
+  opacity: 0.65;
+  filter: grayscale(0.8);
+}
+
+/* ============================================================
+   7. 移动端（≤768px）：纵向堆叠 + 玻璃操作台常驻
+   ============================================================ */
+@media (max-width: 768px) {
+  /* 仅关横向溢出，纵向保持可滚动 */
+  html, body { overflow-x: hidden; overflow-y: auto; }
+
+  .main-layout {
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-2) var(--space-6);
+  }
+  /* 移动端不滚动侧栏：取消限高、内联展开并关闭淡出遮罩 */
+  .side-panel {
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  /* 操作面板吸底：提高不透明度 + 向上投影，避免与棋盘内容糊在一起 */
+  .action-panel {
+    position: sticky;
+    bottom: var(--space-2);
+    z-index: 25;
+    background: var(--glass-3);
+    background: linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--page-base) 78%, var(--glass-3)),
+      color-mix(in srgb, var(--page-base) 62%, var(--glass-2))
+    );
+    backdrop-filter: blur(var(--blur-modal)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--blur-modal)) saturate(160%);
+    border-color: var(--glass-stroke);
+    box-shadow: 0 -10px 30px var(--scrim), 0 -1px 0 var(--glass-stroke), inset 0 1px 0 var(--glass-edge-top);
+  }
+  .panel-card { padding: var(--space-3); border-radius: var(--radius-md); }
+  .players-list { max-height: 260px; overflow-y: auto; padding-right: 2px; }
+  .log-container { max-height: 200px; }
+  .quick-reactions button { max-width: 44px; }
+}
+
+/* ≤420px（iPhone 竖屏）：进一步压缩外围留白，把宽度让给棋盘 */
+@media (max-width: 420px) {
+  .main-layout {
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-1) var(--space-6);
+  }
+  .panel-card { padding: var(--space-2); }
+  /* 粘性操作栏贴底，滚动时骰子/结束回合按钮始终可见 */
+  .action-panel { bottom: 0; }
+}
+
+/* ============================================================
+   8. 横屏矮视口（orientation: landscape + max-height: 520px）
+   宽度导向断点在 844x390 这类视口下失效，这里按高度重排：
+   主区两栏（棋盘左 / 面板右窄栏），侧栏内部滚动不遮棋盘
+   ============================================================ */
+@media (orientation: landscape) and (max-height: 520px) {
+  .main-layout {
+    /* 覆盖 ≤1100px / ≤768px 的单列堆叠，恢复两栏 */
+    display: grid;
+    flex-direction: row;
+    grid-template-columns: minmax(0, 1fr) minmax(230px, 290px);
+    grid-template-rows: minmax(0, 1fr);
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    min-height: 0;
+    overflow: hidden;
+  }
+  /* 侧栏 = 右窄栏：撑满行高，内部滚动，仅底部淡出 */
+  .side-panel {
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+    gap: var(--space-2);
+    padding: 2px 2px var(--space-2);
+    -webkit-mask-image: linear-gradient(180deg, var(--text-primary) 0, var(--text-primary) calc(100% - 20px), transparent 100%);
+    mask-image: linear-gradient(180deg, var(--text-primary) 0, var(--text-primary) calc(100% - 20px), transparent 100%);
+  }
+  .panel-card { padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); }
+  .panel-card h2 { margin-bottom: var(--space-2); font-size: 12px; }
+
+  .player-item { padding: var(--space-1) var(--space-2); gap: 6px; }
+  .player-dot { width: 18px; height: 18px; font-size: 9px; }
+  .player-name { font-size: 12px; }
+  .player-status { font-size: 10px; }
+  .player-money { font-size: 12px; min-width: 54px; }
+  /* 玩家列表内联展开，滚动交给整个侧栏 */
+  .players-list { max-height: none; overflow: visible; }
+
+  /* 操作面板排到右栏首位并吸顶：骰子/结束回合免滚动可见 */
+  .action-panel {
+    order: -1;
+    position: sticky;
+    top: 0;
+    bottom: auto;
+    z-index: 6;
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--page-base) 80%, var(--glass-2)),
+      color-mix(in srgb, var(--page-base) 66%, var(--glass-3))
+    );
+    backdrop-filter: blur(var(--blur-modal)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--blur-modal)) saturate(160%);
+    border-color: var(--glass-stroke);
+    box-shadow: var(--shadow-lg), inset 0 1px 0 var(--glass-edge-top);
+  }
+
+  .log-container { max-height: 132px; font-size: 11.5px; line-height: 1.45; }
+  .chat-input-area { margin-top: var(--space-2); }
+  #chatInput { padding: 5px 12px; font-size: 12.5px; }
+  .chat-input-area .btn { padding: 5px 14px; }
+  .quick-reactions { margin-top: var(--space-1); gap: 4px; }
+  .quick-reactions button { max-width: 30px; font-size: 13px; }
+
+  .stats-row,
+  .pm-prop { padding: 3px var(--space-2); font-size: 11.5px; }
+}

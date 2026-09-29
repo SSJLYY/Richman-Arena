@@ -1,0 +1,221 @@
+/* ============================================================
+   base.css — 重置 / 环境光背景 / 玻璃工具类 / 全局动效
+   ============================================================ */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { height: 100%; }
+
+body {
+  /* 系统字体栈：不依赖外部 Web Font（Google Fonts 在国内会拖慢首屏） */
+  font-family: var(--font-sans);
+  font-feature-settings: 'tnum' 1;
+  background: var(--page-base);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  transition: background var(--transition-slow), color var(--transition-slow);
+}
+
+/* ---------- 环境光：毛玻璃必须有可透视的东西，否则等于纯色 ---------- */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -20%;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(46% 38% at 12% 6%, var(--ambient-1), transparent 62%),
+    radial-gradient(38% 34% at 88% 2%, var(--ambient-2), transparent 60%),
+    radial-gradient(44% 40% at 78% 88%, var(--ambient-3), transparent 62%),
+    radial-gradient(40% 36% at 8% 92%, var(--ambient-4), transparent 60%);
+  filter: saturate(126%);
+  animation: ambientDrift 34s ease-in-out infinite alternate;
+}
+/* 细颗粒：消除大面积渐变的"塑料感" */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+@keyframes ambientDrift {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-2.5%, 2%, 0) scale(1.06); }
+  100% { transform: translate3d(2%, -2.5%, 0) scale(1.03); }
+}
+
+/* ---------- 玻璃工具类 ---------- */
+.glass {
+  background: var(--glass-1);
+  backdrop-filter: blur(var(--blur-card)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--blur-card)) saturate(150%);
+  border: 1px solid var(--glass-stroke);
+  box-shadow: var(--shadow-glass), inset 0 1px 0 var(--glass-edge-top);
+  position: relative;
+}
+.glass-raised {
+  background: var(--glass-2);
+  backdrop-filter: blur(var(--blur-panel)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur-panel)) saturate(160%);
+  border: 1px solid var(--glass-stroke);
+  box-shadow: var(--shadow-glass), inset 0 1px 0 var(--glass-edge-top);
+  position: relative;
+}
+/* 高光斜切：给大面板加一层镜面反射 */
+.glass-spec::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-spec);
+  pointer-events: none;
+}
+.scrim {
+  background: var(--scrim);
+  backdrop-filter: blur(var(--blur-modal)) saturate(120%);
+  -webkit-backdrop-filter: blur(var(--blur-modal)) saturate(120%);
+}
+
+/* 表单工具类：JS 动态生成的弹窗表单统一用它，避免内联硬编码颜色 */
+.glass-input,
+.glass-select {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--glass-input);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.glass-input:focus,
+.glass-select:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+.glass-input::placeholder { color: var(--text-tertiary); }
+.glass-select { cursor: pointer; }
+
+/* 语义色小工具：JS 里按数值切换，避免硬编码色值（浅色主题下才读得清） */
+.tone-good { color: var(--accent-success); }
+.tone-warn { color: var(--accent-warning); }
+.tone-bad  { color: var(--accent-danger); }
+.tone-mute { color: var(--text-tertiary); }
+.solid-chip {
+  /* 背景是固定的玩家色（跨主题不变），文字恒为深色，不随主题翻转 */
+  color: #10131f;
+  font-weight: 700;
+  border-radius: var(--radius-xs);
+  padding: 0 5px;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+}
+.code-block {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  word-break: break-all;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--glass-input);
+  border: 1px solid var(--glass-stroke-soft);
+  color: var(--text-secondary);
+}
+
+/* 无 backdrop-filter 支持时退回半实色面，保证可读 */
+@supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
+  :root {
+    --glass-1: rgba(22, 29, 56, 0.94);
+    --glass-2: rgba(30, 38, 71, 0.96);
+    --glass-3: rgba(39, 48, 79, 0.96);
+    --glass-input: rgba(11, 16, 35, 0.94);
+  }
+}
+
+/* ---------- 全局骨架 ---------- */
+#app { min-height: 100vh; display: flex; flex-direction: column; }
+.hidden { display: none !important; }
+
+.logo {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: -0.4px;
+  background: linear-gradient(120deg, var(--accent-primary), var(--accent-warning) 78%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ---------- 滚动条 ---------- */
+* { scrollbar-width: thin; scrollbar-color: var(--glass-3) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--glass-3);
+  border-radius: var(--radius-pill);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); background-clip: padding-box; }
+
+/* ---------- 焦点可见性（键盘操作） ----------
+   两层描边：内层实色 outline + 外层 --ring 光晕，深色/浅色主题下都够对比。
+   注意：只增强 :focus-visible（键盘导航），鼠标点击不显示。 */
+:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--ring);
+}
+/* 弹窗容器（tabindex="-1" 只用于承接焦点）自身不画圈，焦点圈由内部控件呈现 */
+[role='dialog']:focus:not(:focus-visible) { outline: none; box-shadow: none; }
+
+/* ---------- 跳到主内容（仅键盘聚焦时可见） ---------- */
+.skip-link {
+  position: fixed;
+  top: -60px;
+  left: 12px;
+  z-index: 10050; /* 高于 .modal(10000)，聚焦时一定在最上层 */
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--text-primary);
+  background: var(--glass-3);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-glass);
+  transition: top var(--transition-fast);
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  top: 12px;
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* ---------- 通用徽标 / 彩带 ---------- */
+/* z 必须高于 .modal(10000)，否则胜利彩带被结算弹窗遮住 */
+.confetti-layer { position: fixed; inset: 0; pointer-events: none; z-index: 10002; overflow: hidden; }
+.confetti-piece { position: absolute; top: -14px; border-radius: 2px; animation: confettiFall linear forwards; }
+@keyframes confettiFall { to { transform: translateY(112vh) rotate(720deg); opacity: 0.9; } }
+
+/* ---------- 尊重系统动效偏好 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  body::before { animation: none; }
+}
+
+/* ---------- 主题切换的一瞬过渡（只给大面积面板；类名归属各自 CSS 文件，此处仅做过渡） ---------- */
+.panel-card, .board-section, .app-header, .lobby-card {
+  transition: background var(--transition-normal), border-color var(--transition-normal), color var(--transition-normal);
+}

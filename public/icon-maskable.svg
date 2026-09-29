@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="大富翁在线">
+  <defs>
+    <linearGradient id="bgm" x1="16" y1="4" x2="112" y2="126" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#131c3a"/>
+      <stop offset="1" stop-color="#0b1226"/>
+    </linearGradient>
+    <linearGradient id="sheenm" x1="0" y1="0" x2="76" y2="98" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="halom" cx="64" cy="62" r="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffd54f" stop-opacity="0.28"/>
+      <stop offset="0.6" stop-color="#5aa9ff" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#5aa9ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="fTopm" x1="34" y1="28" x2="94" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eaf0fd"/>
+    </linearGradient>
+    <linearGradient id="fLeftm" x1="28" y1="48" x2="62" y2="102" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c4d2ee"/>
+      <stop offset="1" stop-color="#9cb1d9"/>
+    </linearGradient>
+    <linearGradient id="fRightm" x1="68" y1="48" x2="100" y2="102" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f7f9ff"/>
+      <stop offset="1" stop-color="#d6e1f7"/>
+    </linearGradient>
+    <linearGradient id="pipm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5aa9ff"/>
+      <stop offset="1" stop-color="#1f6fd0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- maskable：背景铺满整张画布，主体全部落在中心 80% 安全区内 -->
+  <rect width="128" height="128" fill="url(#bgm)"/>
+  <rect width="128" height="128" fill="url(#sheenm)"/>
+  <circle cx="64" cy="62" r="46" fill="url(#halom)"/>
+  <g transform="translate(64 64) scale(0.88) translate(-64 -65)">
+    <ellipse cx="64" cy="112" rx="30" ry="5" fill="#040814" opacity="0.4"/>
+    <path d="M64 22 L104 44 L64 66 L24 44 Z" fill="url(#fTopm)"/>
+    <path d="M24 44 L64 66 L64 108 L24 86 Z" fill="url(#fLeftm)"/>
+    <path d="M64 66 L104 44 L104 86 L64 108 Z" fill="url(#fRightm)"/>
+    <path d="M24 44 L64 66 L104 44 M64 66 L64 108" fill="none" stroke="#6f8bbd" stroke-opacity="0.5" stroke-width="1.5"/>
+    <path d="M64 22 L104 44 L104 86 L64 108 L24 86 L24 44 Z" fill="none" stroke="#ffd54f" stroke-width="3" stroke-linejoin="round"/>
+    <ellipse cx="44" cy="44" rx="5.4" ry="3.4" fill="url(#pipm)"/>
+    <ellipse cx="64" cy="44" rx="5.4" ry="3.4" fill="url(#pipm)"/>
+    <ellipse cx="84" cy="44" rx="5.4" ry="3.4" fill="url(#pipm)"/>
+    <circle cx="36" cy="64" r="4.8" fill="#ffd54f"/>
+    <circle cx="52" cy="88" r="4.8" fill="#ffd54f"/>
+    <circle cx="84" cy="76" r="5.2" fill="url(#pipm)"/>
+  </g>
+</svg>

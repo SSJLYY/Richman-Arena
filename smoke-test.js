@@ -23,7 +23,9 @@ function client(url, name) {
   // ════════ 主实例：全流程回归 ════════
   const A = client(URL, 'Alice'), B = client(URL, 'Bob');
   A.socket.on('connect', () => A.socket.emit('join', { roomId: ROOM, name: 'Alice', token: 'tok_alice_1', avatar: '🧑' }));
-  B.socket.on('connect', () => B.socket.emit('join', { roomId: ROOM, name: 'Bob', token: 'tok_bob___1', avatar: '👩' }));
+  await sleep(500); // Bob 晚于 Alice 入座，确保房主席位确定（并发 join 会随机抢房）
+  const bjoin = () => B.socket.emit('join', { roomId: ROOM, name: 'Bob', token: 'tok_bob___1', avatar: '👩' });
+  if (B.socket.connected) bjoin(); else B.socket.on('connect', bjoin);
   await sleep(800);
 
   check('两人加入房间', A.state && A.state.order.length === 2 && !A.state.started);
@@ -178,8 +180,12 @@ function client(url, name) {
   const T = client(URL2, 'T1');
   const T2 = client(URL2, 'T2');
   T.socket.on('connect', () => T.socket.emit('join', { roomId: ROOM2, name: 'T1', token: 'tok_t1____1', avatar: '🧑' }));
-  T2.socket.on('connect', () => T2.socket.emit('join', { roomId: ROOM2, name: 'T2', token: 'tok_t2____2', avatar: '👩' }));
   await sleep(700);
+  // T2 必须等 T1 入座后再加入：并发连接时谁先到服务端谁当房主，
+  // 若 T2 抢房，后续所有房主专属操作（setSettings/start/reset）会整链随机失败
+  const t2join = () => T2.socket.emit('join', { roomId: ROOM2, name: 'T2', token: 'tok_t2____2', avatar: '👩' });
+  if (T2.socket.connected) t2join(); else T2.socket.on('connect', t2join);
+  for (let i = 0; i < 20 && !(T.state && T.state.order.includes('tok_t2____2')); i++) await sleep(150);
   // ── v2.9：房间设置（起始资金）──
   T.socket.emit('setSettings', { startMoney: 20000, map: 'china', turnTimeoutMs: 30000 });
   await sleep(300);
@@ -335,8 +341,18 @@ function client(url, name) {
   check('建筑仍在（level=1）', T.state.board[3].level === 1);
   T.socket.emit('testHook', { op: 'setLevel', cellId: 3, n: 0 });
   await sleep(250);
-  T.socket.emit('trade', { targetId: 'tok_t2____2', giveMoney: 0, getMoney: 0, giveProps: [3], getProps: [] });
-  await sleep(300);
+  // 偶发闪断会把 T1 自动托管（from.delegated 时服务端静默忽略 trade），交易前先收回控制权
+  if (T.state.players['tok_t1____1'].delegated) { T.socket.emit('toggleDelegation'); await sleep(250); }
+  const tradeToT2 = () => T.socket.emit('trade', { targetId: 'tok_t2____2', giveMoney: 0, getMoney: 0, giveProps: [3], getProps: [] });
+  tradeToT2();
+  for (let i = 0; i < 12 && !T.state.trade; i++) {
+    await sleep(150);
+    if (i === 5 && !T.state.trade) {
+      const p = T.state.players['tok_t1____1'];
+      console.log('  [diag] 提议未生成:', JSON.stringify({ delegated: p.delegated, connected: p.connected, bankrupt: p.bankrupt, props: p.properties }));
+      tradeToT2(); // 可能撞上闪断窗口，重发一次
+    }
+  }
   T2.socket.emit('tradeResp', { seq: T.state.trade.seq, accept: true });
   await sleep(400);
   check('无建筑可正常交易（对照）', T.state.board[3].owner === 'tok_t2____2');
@@ -620,6 +636,107 @@ function client(url, name) {
   await sleep(21000);
   check('拍卖正常结算（有胜者）', T.state.board[1].owner !== null);
   T.socket.emit('reset');
+
+  // ════════ v2.34 补充测试①：botSpeed 机器人速度设置 ════════
+  // 事件名=setSettings（botSpeed 字段）；合法值集合 [0.4, 1]（server.js:2020）
+  // 用独立新客户端（每 socket 仅 1 次 join），规避 join 频率限制(6次/60s, server.js:1581)
+  const ensureConn = (c) => new Promise(res => {
+    if (c.socket.connected) return res();
+    c.socket.on('connect', () => res());
+  });
+  const speedRoom = 'spd_' + Date.now().toString(36);
+  const S = client(URL2, 'SP1');
+  await ensureConn(S);
+  S.socket.emit('join', { roomId: speedRoom, name: 'SP1', token: 'tok_spd___1' });
+  ok = await waitCond(() => S.state && S.state.id === speedRoom);
+  check('botSpeed 房间就绪', ok);
+  check('botSpeed 默认值=1', S.state && S.state.settings && S.state.settings.botSpeed === 1);
+  // 合法值 0.4 → 生效
+  S.socket.emit('setSettings', { botSpeed: 0.4 });
+  ok = await waitCond(() => S.state && S.state.settings && S.state.settings.botSpeed === 0.4);
+  check('botSpeed 合法值(0.4)生效', ok);
+  // 非法值 2 → 被拒，保持 0.4（[0.4,1].includes(2)===false）
+  S.socket.emit('setSettings', { botSpeed: 2 });
+  await sleep(300);
+  check('botSpeed 非法值(2)被拒（保持0.4）', S.state && S.state.settings && S.state.settings.botSpeed === 0.4);
+  // 恢复默认 1，再作为房主 addBot 不影响运行
+  S.socket.emit('setSettings', { botSpeed: 1 });
+  ok = await waitCond(() => S.state && S.state.settings && S.state.settings.botSpeed === 1);
+  S.socket.emit('addBot', { difficulty: 'easy' });
+  ok = await waitCond(() => S.state && S.state.order && S.state.order.length === 2);
+  check('botSpeed 设置后仍可加 bot 且字段类型为 number', ok && typeof S.state.settings.botSpeed === 'number');
+
+  // ════════ v2.34 补充测试②：团队模式 teamWins 生涯统计 ════════
+  // 前置：本测试实例此前已结束一局团队模式对局（teamRoom，房主昵称 'TM1'，TM1 队获胜）。
+  // server.js:380 在 teamMode 且 winner 存在时，对获胜队存活成员 s.teamWins +=1 并 saveStats()。
+  // 客观事实：teamWins 仅落 stats.json 档案；getStats 的 mine 与 topStats() 均未暴露该字段。
+  let teamWinsCount = null;
+  try {
+    const stJson = JSON.parse(require('fs').readFileSync(DATA_DIR2 + '/stats.json', 'utf8'));
+    teamWinsCount = (stJson['TM1'] && stJson['TM1'].teamWins) || 0;
+  } catch (e) { teamWinsCount = null; }
+  check('团队模式 teamWins 写入 stats.json(≥1)', teamWinsCount !== null && teamWinsCount >= 1);
+
+  // ════════ v2.34 补充测试③：破产变卖优先级 ════════
+  // botSettleDebt(server.js:713-751) 顺序：先紧急出售建筑(canSell) → 再紧急抵押空地(price 升序)
+  //                                  → 仍不足则 handleBankruptcy 破产清算。
+  // 构造：债务人 BR1 持「cell1 空地 + cell3 带1级房(棕系成套) + cell6 空地」+ 现金50，
+  //       落地所得税(cell4) 产生 ¥2000 税债。托管(delegated) 触发 600ms 自动清算。
+  // 注：cell1 与 cell3 必须同属 BR1（棕系成套），否则 canSell 内组内 maxLevel 会因未持有格
+  //     level 为 undefined 而算成 NaN，导致建筑判为不可卖。
+  // BR2 先入房 = 房主且 order[0](当前玩家)；BR1 为 order[1](非当前) → 托管不触发 AI 抢跑。
+  const brRoom = 'brk_' + Date.now().toString(36);
+  const B2 = client(URL2, 'BR2');
+  const B1 = client(URL2, 'BR1');
+  await ensureConn(B2); await ensureConn(B1);
+  B2.socket.emit('join', { roomId: brRoom, name: 'BR2', token: 'tok_br2____2' });
+  ok = await waitCond(() => B2.state && B2.state.id === brRoom);
+  B1.socket.emit('join', { roomId: brRoom, name: 'BR1', token: 'tok_br1____1' });
+  ok = await waitCond(() => B1.state && B1.state.id === brRoom && B1.state.order.length === 2);
+  check('破产场景：2 名玩家就绪', ok);
+  B2.socket.emit('start');
+  ok = await waitCond(() => B1.state && B1.state.started, 15, 300);
+  if (!ok) { B2.socket.emit('start'); ok = await waitCond(() => B1.state && B1.state.started, 15, 300); }
+  check('破产场景：开局成功且 BR1 非当前玩家', ok && B1.state.order[B1.state.turnIndex] !== 'tok_br1____1');
+  // BR1 开启托管（非当前玩家 → 不触发 scheduleAI；债务到期由 botSettleDebt 清算）
+  B1.socket.emit('toggleDelegation');
+  ok = await waitCond(() => B1.state.players['tok_br1____1'] && B1.state.players['tok_br1____1'].delegated === true);
+  // 债务人资产组合：cell1 空地 / cell3 带1级房（棕系成套）/ cell6 空地
+  B1.socket.emit('testHook', { op: 'setOwner', cellId: 1 }); await sleep(150);
+  B1.socket.emit('testHook', { op: 'setOwner', cellId: 3 }); await sleep(150);
+  B1.socket.emit('testHook', { op: 'setLevel', cellId: 3, n: 1 }); await sleep(150);
+  B1.socket.emit('testHook', { op: 'setOwner', cellId: 6 }); await sleep(150);
+  B1.socket.emit('testHook', { op: 'setMoney', amount: 50 }); await sleep(200);
+  check('破产场景：cell3 带1级房、cell6 空地', B1.state.board[3].owner === 'tok_br1____1' && B1.state.board[3].level === 1 && B1.state.board[6].owner === 'tok_br1____1' && B1.state.board[6].level === 0);
+  check('破产场景：债务人现金=50', B1.state.players['tok_br1____1'].money === 50);
+  // 落地所得税(cell4) → ¥2000 税债 → 600ms 后 botSettleDebt 自动清算
+  B1.socket.emit('testHook', { op: 'landAs', pos: 4 });
+  ok = await waitCond(() => B1.state.players['tok_br1____1'] && B1.state.players['tok_br1____1'].bankrupt === true, 25, 200);
+  await sleep(300); // 等待最终 broadcast 落库
+  const brLogs = (B1.state.logs || []).map(l => l.text);
+  const sellIdx = brLogs.findIndex(t => t.includes('紧急出售'));
+  const mortIdx = brLogs.findIndex(t => t.includes('紧急抵押'));
+  const bkIdx = brLogs.findIndex(t => t.includes('破产') || t.includes('筹钱失败'));
+  check('产生 ¥2000 税债并进入筹钱期', brLogs.some(t => t.includes('无力支付') && t.includes('¥2000')));
+  check('清算优先级：先卖建筑(🔨)再抵押(🏦)', sellIdx !== -1 && mortIdx !== -1 && sellIdx < mortIdx);
+  check('变卖仍不足 → 挂债清盘破产', bkIdx !== -1 && B1.state.players['tok_br1____1'].bankrupt === true && B1.state.players['tok_br1____1'].money === 0);
+
+  // ════════ v2.34 补充测试④：成套租金精确值（2×baseRent） ════════
+  // calcRent(server.js:611-616)：level===0 且 ownsFullGroup → rent = rents[0]*2*rentMul。
+  // 棕色组(cell1+cell3) rents[0]=100，classic rentMul=1 → 集齐且无人建时 rent===200。
+  const rentRoom = 'rent_' + Date.now().toString(36);
+  const R1 = client(URL2, 'RT1');
+  await ensureConn(R1);
+  R1.socket.emit('join', { roomId: rentRoom, name: 'RT1', token: 'tok_rent__1' });
+  ok = await waitCond(() => R1.state && R1.state.id === rentRoom);
+  R1.socket.emit('testHook', { op: 'setOwner', cellId: 1 });  // cell1 棕色
+  await sleep(150);
+  R1.socket.emit('testHook', { op: 'setOwner', cellId: 3 });  // cell3 棕色 → 全组成套
+  await sleep(250);
+  check('整套无建筑 rent === 2×baseRent(200)', R1.state.board[1].rent === 200 && R1.state.board[3].rent === 200);
+
+  S.socket.close(); B1.socket.close(); B2.socket.close(); R1.socket.close();
+
   TA.socket.close(); TB.socket.close();
   T.socket.close(); T2.socket.close(); T3.socket.close(); T4.socket.close();
   sSock.close();

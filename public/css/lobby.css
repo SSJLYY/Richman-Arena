@@ -1,0 +1,507 @@
+/* lobby.css — 第一屏：加载页 + 大厅首页（毛玻璃双主题版） */
+
+/* ============================================================
+   加载页
+   ============================================================ */
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  background: var(--page-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: var(--space-5);
+  z-index: 9999;
+  animation: loadingFadeIn 0.6s ease both;
+}
+@keyframes loadingFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.loading-content {
+  text-align: center;
+  padding: var(--space-8) var(--space-8) var(--space-6);
+  background: var(--glass-1);
+  backdrop-filter: blur(var(--blur-panel)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--blur-panel)) saturate(150%);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 var(--glass-edge-top);
+}
+.loading-content h1 {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+.loading-dice {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: center;
+  margin-bottom: var(--space-4);
+}
+.die {
+  width: 56px;
+  height: 56px;
+  font-size: 30px;
+  background: var(--glass-2);
+  border: 1px solid color-mix(in srgb, var(--accent-gold) 55%, transparent);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-edge-top), var(--glow-gold);
+  animation: bounce 1s infinite ease-in-out;
+}
+.die:nth-child(2) { animation-delay: 0.15s; }
+@keyframes bounce {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-12px) rotate(15deg); }
+}
+.loading-text {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: var(--space-4);
+}
+.loading-bar {
+  width: 220px;
+  height: 6px;
+  background: color-mix(in srgb, var(--text-tertiary) 22%, transparent);
+  border: 1px solid var(--glass-stroke-soft);
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  margin: 0 auto;
+}
+.loading-fill {
+  position: relative;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--accent-primary), var(--accent-info));
+  border-radius: var(--radius-pill);
+  animation: loading 2s infinite linear;
+}
+.loading-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 50% 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.35), transparent);
+}
+@keyframes loading {
+  0% { width: 0; }
+  50% { width: 100%; }
+  100% { width: 0; }
+}
+
+/* ============================================================
+   大厅：透明滚动容器（让 body 环境光透出，玻璃感才成立）
+   ============================================================ */
+.lobby {
+  position: relative;
+  flex: 1;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8) 20px calc(var(--space-8) + var(--space-5));
+  overflow-y: auto;
+  background: transparent;
+}
+
+/* ---------- 主玻璃面板 ---------- */
+.lobby-card {
+  position: relative;
+  width: 100%;
+  max-width: 980px;
+  margin: auto; /* 配合 flex 滚动容器，超高时不裁顶 */
+  background: var(--glass-1);
+  backdrop-filter: blur(var(--blur-wide)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur-wide)) saturate(160%);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl), inset 0 1px 0 var(--glass-edge-top);
+  padding: var(--space-8) var(--space-8) calc(var(--space-8) + var(--space-2));
+}
+.lobby-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-spec);
+  pointer-events: none;
+}
+
+/* ---------- 头部：logo + 版本 + 右侧工具组 ---------- */
+.lobby-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 1;
+}
+.lobby-head .logo {
+  font-size: clamp(24px, 4.2vw, 34px);
+}
+.lobby-head .version {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--text-tertiary);
+  background: var(--glass-2);
+  border: 1px solid var(--glass-stroke-soft);
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+}
+.lobby-sub {
+  margin: var(--space-2) 0 var(--space-6);
+  color: var(--text-secondary);
+  font-size: 14.5px;
+}
+
+/* ---------- 双列网格 / 第二层玻璃区块 ---------- */
+.lobby-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+.lobby-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+.lobby-section {
+  background: var(--glass-2);
+  border: 1px solid var(--glass-stroke-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-edge-top);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+.lobby-section h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  margin-bottom: var(--space-4);
+}
+
+/* ---------- 表单 / 玻璃输入面 ---------- */
+.lobby-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.lobby-form input[type="text"],
+.lobby-join input {
+  width: 100%;
+  padding: 11px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--glass-input);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
+}
+.lobby-form input[type="text"]:focus,
+.lobby-join input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+.lobby-form input::placeholder,
+.lobby-join input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.lobby .avatar-grid {
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+.lobby .avatar-option {
+  background: var(--glass-1);
+  border-color: var(--glass-stroke-soft);
+  font-size: 20px;
+}
+
+/* ---------- 行动区：主次分明 ---------- */
+.lobby-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+.lobby-actions .btn {
+  width: 100%;
+  min-height: 48px;
+  letter-spacing: 0.5px;
+}
+/* 「一键开玩」加视觉重量 */
+.lobby-actions #lobbySoloBtn {
+  box-shadow: var(--glow-gold), var(--shadow-sm);
+}
+/* 加入房间：一体化玻璃胶囊条（不覆盖 #joinPwdInput 的行内 max-width） */
+.lobby-join {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--glass-input);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius-lg);
+  box-shadow: inset 0 1px 0 var(--glass-edge-top);
+}
+.lobby-join input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+.lobby-join input:focus {
+  background: var(--glass-1);
+  border-color: transparent;
+}
+.lobby-join .btn {
+  flex-shrink: 0;
+  /* .lobby-actions .btn 的 width:100%/min-height:48px 会溢出胶囊条盖住输入框 */
+  width: auto;
+  min-height: 0;
+}
+
+/* ---------- 房间列表 ---------- */
+.lobby-rooms {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: var(--space-1);
+}
+.lobby-rooms::-webkit-scrollbar { width: 6px; }
+.lobby-rooms::-webkit-scrollbar-track { background: transparent; }
+.lobby-rooms::-webkit-scrollbar-thumb {
+  background: var(--glass-3);
+  border-radius: var(--radius-pill);
+}
+.lobby-room-item {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--glass-1);
+  border: 1px solid var(--glass-stroke-soft);
+  border-radius: var(--radius-md);
+  padding: 9px 10px 9px 15px;
+  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.lobby-room-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--accent-primary), var(--accent-info));
+  opacity: 0.55;
+  transition: opacity var(--transition-fast);
+}
+.lobby-room-item:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-glass);
+}
+.lobby-room-item:hover::before { opacity: 1; }
+.lr-id {
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.lr-meta {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lobby-empty {
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  padding: var(--space-6) var(--space-4);
+  background: color-mix(in srgb, var(--glass-1) 60%, transparent);
+  border: 1px dashed var(--glass-stroke);
+  border-radius: var(--radius-md);
+}
+
+/* ---------- 战绩 / 排行榜（大厅局部覆盖 panels 基础） ---------- */
+.my-stats-line {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  padding: var(--space-2) var(--space-3);
+  background: color-mix(in srgb, var(--accent-gold) 12%, var(--glass-1));
+  border: 1px solid color-mix(in srgb, var(--accent-gold) 38%, transparent);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 0 var(--glass-edge-top);
+  margin-bottom: var(--space-3);
+  min-height: 16px;
+}
+.lobby .stats-row {
+  background: var(--glass-1);
+  border: 1px solid var(--glass-stroke-soft);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-sm);
+}
+.lobby .stats-row:nth-child(-n+3) {
+  border-left-color: var(--accent-gold);
+}
+.lobby .stats-row:nth-child(2) {
+  border-left-color: color-mix(in srgb, var(--accent-gold) 60%, var(--text-tertiary));
+}
+.lobby .stats-row:nth-child(3) {
+  border-left-color: color-mix(in srgb, var(--accent-gold) 35%, var(--text-tertiary));
+}
+
+/* ---------- 断线重连横幅 ---------- */
+.rejoin-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  background: linear-gradient(120deg,
+    color-mix(in srgb, var(--accent-info) 16%, var(--glass-1)),
+    color-mix(in srgb, var(--accent-success) 12%, var(--glass-1)));
+  border: 1px solid color-mix(in srgb, var(--accent-info) 55%, transparent);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 0 var(--glass-edge-top);
+  padding: var(--space-2) var(--space-3);
+  font-size: 12.5px;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+/* ============================================================
+   响应式
+   ============================================================ */
+@media (max-width: 860px) {
+  .lobby { padding: var(--space-5) var(--space-3) var(--space-6); }
+  .lobby-card {
+    padding: var(--space-5) var(--space-4) var(--space-6);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(var(--blur-panel)) saturate(150%); /* 窄屏减弱 blur 保性能 */
+    -webkit-backdrop-filter: blur(var(--blur-panel)) saturate(150%);
+  }
+  .lobby-head .logo { font-size: 24px; }
+  .lobby-sub { font-size: 13.5px; margin-bottom: var(--space-4); }
+  .lobby-grid { grid-template-columns: 1fr; gap: var(--space-4); }
+  .lobby-col { gap: var(--space-4); }
+  .lobby-section { padding: var(--space-4); }
+  .lobby-actions { grid-template-columns: 1fr; }
+  .lobby-rooms { max-height: 40vh; }
+  .lobby-empty { padding: var(--space-4) var(--space-3); font-size: 12.5px; }
+  .loading-content { padding: var(--space-6) var(--space-6) var(--space-5); }
+}
+
+@media (max-width: 420px) {
+  .lobby { padding: var(--space-3) var(--space-2) var(--space-5); }
+  .lobby-card { padding: var(--space-4) var(--space-3) var(--space-5); }
+  .lobby-head { gap: var(--space-2); }
+  .lobby-section h2 { font-size: 12px; }
+  .lobby-join { flex-wrap: wrap; }
+  .lobby-join .btn { width: 100%; }
+  .die { width: 46px; height: 46px; font-size: 26px; }
+  .loading-bar { width: 180px; }
+}
+
+/* ============================================================
+   横屏矮视口（orientation: landscape + max-height: 520px）
+   手机横过来：宽度 >768px 命中不了竖屏断点，但高度只有 ~390px。
+   头像圈缩小、双列重排、间距压缩，让「昵称+头像+加入/创建」一屏完成
+   ============================================================ */
+@media (orientation: landscape) and (max-height: 520px) {
+  .lobby {
+    align-items: flex-start;
+    padding: var(--space-3) var(--space-4) var(--space-4);
+  }
+  .lobby-card {
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(var(--blur-panel)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--blur-panel)) saturate(150%);
+  }
+  .lobby-head .logo { font-size: 19px; }
+  .lobby-sub { margin: 3px 0 var(--space-3); font-size: 12.5px; }
+
+  /* 双列：左 = 身份 + 行动，右 = 房间列表 + 战绩 */
+  .lobby-grid {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    gap: var(--space-3);
+  }
+  .lobby-col { gap: var(--space-3); min-height: 0; }
+  .lobby-section { padding: var(--space-2) var(--space-3) var(--space-3); }
+  .lobby-section h2 { margin-bottom: var(--space-2); font-size: 12px; }
+
+  .lobby-form { gap: var(--space-2); }
+  .lobby-form input[type="text"] { padding: 7px 12px; font-size: 13px; }
+  .lobby .avatar-grid { grid-template-columns: repeat(6, minmax(0, 46px)); gap: 7px; }
+  .lobby .avatar-option { font-size: 15px; }
+
+  .lobby-actions { grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+  .lobby-actions .btn { min-height: 38px; padding: 6px 10px; font-size: 13px; }
+  .lobby-join { grid-column: 1 / -1; padding: var(--space-1); }
+  .lobby-join input { padding: 6px 10px; font-size: 13px; }
+  .lobby-join .btn { width: auto; min-height: 0; padding: 6px 14px; }
+
+  /* 房间列表：内部滚动，不撑高页面 */
+  .lobby-rooms { max-height: min(38vh, 220px); }
+  .lobby-room-item { padding: 6px 8px 6px 13px; }
+  .lr-id { font-size: 12px; }
+  .lr-meta { font-size: 11px; }
+  .lobby-empty { padding: var(--space-3) var(--space-2); font-size: 12px; }
+  .my-stats-line { padding: var(--space-1) var(--space-2); margin-bottom: var(--space-2); font-size: 11.5px; }
+  .rejoin-banner { padding: var(--space-1) var(--space-2); font-size: 12px; }
+  .loading-content { padding: var(--space-5) var(--space-5) var(--space-4); }
+}
+
+/* 更矮一档（≤420px，如 844x390）：进一步压缩 */
+@media (orientation: landscape) and (max-height: 420px) {
+  .lobby { padding: var(--space-2) var(--space-3) var(--space-3); }
+  .lobby-card { padding: var(--space-3) var(--space-4); }
+  .lobby-sub { display: none; }
+  .lobby-head .logo { font-size: 17px; }
+  .lobby-grid { gap: var(--space-2); }
+  .lobby-col { gap: var(--space-2); }
+  .lobby .avatar-grid { grid-template-columns: repeat(6, minmax(0, 40px)); gap: 5px; }
+  .lobby .avatar-option { font-size: 13px; }
+  .lobby-actions .btn { min-height: 34px; font-size: 12.5px; }
+  .lobby-rooms { max-height: min(32vh, 160px); }
+  .die { width: 40px; height: 40px; font-size: 22px; }
+}
+
+/* ============================================================
+   无障碍：动效降级
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .loading-screen { animation: none; }
+  .die { animation: none; transform: none; }
+  .loading-fill { animation-duration: 6s; }
+  .lobby-room-item,
+  .lobby-room-item:hover { transform: none; transition: none; }
+}

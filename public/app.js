@@ -52,6 +52,33 @@ const state = {
 };
 let lastRooms = [];
 
+// ── 棋盘增量渲染缓存 ──
+// boardCells: cellId -> { el, cellName, price, house, dot, rent, sig }
+//   首次渲染为 40 格建骨架并常驻；后续仅按 cell.id 增量 patch 动态状态，
+//   未变化的格子复用同一 DOM 节点（render-test 断言依据）。
+// boardCenterEl / boardCenterHtml：中央信息面板仅在内容变化时才重建。
+const boardCells = {};
+let boardCenterEl = null;
+let boardCenterHtml = null;
+// playerCards: playerId -> { div, dot, info, money, sig }（玩家面板增量复用）
+const playerCards = {};
+let playerOrderSig = null;
+// lastLogSig：日志渲染签名，内容未变化时跳过重建
+let lastLogSig = null;
+const ICONS_META = { go:'🏁', jail:'🔒', parking:'🅿️', gotojail:'🚔', chance:'❓', chest:'📦', tax:'🏛️', railroad:'🚂', utility:'💡', casino:'🎰' };
+function cellVisible(el, on) { if (el) el.style.display = on ? '' : 'none'; }
+function cellStaticSig(cell) {
+  // 静态结构签名：名称/类型/价格/网格位置任一变化 → 该格需整体重建
+  return `${cell.name}|${cell.type}|${cell.group || ''}|${cell.price || 0}|${cell.pos.c}|${cell.pos.r}`;
+}
+function cellTitle(cell) {
+  const ownerName = cell.owner ? (state.game.players[cell.owner]?.name || '') : '';
+  return `${cell.name}${cell.price ? ' · ¥' + cell.price : ''}` +
+    `${ownerName ? ' · ' + ownerName : ''}` +
+    `${cell.mortgaged ? ' · 已抵押' : ''}` +
+    `${cell.rent > 0 ? ' · 租金 ¥' + cell.rent : ''}`;
+}
+
 // --- Sound Engine (WebAudio 合成，无外部资源) ---
 const Sound = {
   ctx: null,
@@ -187,6 +214,10 @@ const els = {
   startMoneySel: $('startMoneySel'),
   jackpotChk: $('jackpotChk'),
   auctionChk: $('auctionChk'),
+  roomSetupCard: $('roomSetupCard'),
+  themeBtn: $('themeBtn'),
+  themeBtnLobby: $('themeBtnLobby'),
+  helpBtnLobby: $('helpBtnLobby'),
 };
 
 // ────────────────────────────────────────────────────────────
@@ -202,6 +233,74 @@ function playerColor(pid) {
   return PLAYER_COLORS[idx >= 0 ? idx % PLAYER_COLORS.length : 0];
 }
 
+// 按背景色亮度选文字色：色块底色（地产组色/玩家色）跨主题固定，不能依赖 --text-inverse
+function textOn(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return '#fff';
+  const n = parseInt(m[1], 16);
+  const lum = [16, 8, 0].map(s => {
+    const v = ((n >> s) & 255) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  }).reduce((a, c, i) => a + [0.2126, 0.7152, 0.0722][i] * c, 0);
+  return lum > 0.4 ? '#10131f' : '#ffffff';
+}
+
+// 版本角标：数据来自服务端 /version（package.json 不在静态目录内）
+function syncVersion() {
+  fetch('/version').then(r => r.json()).then(p => {
+    document.querySelectorAll('.version').forEach(el => { el.textContent = 'v' + p.version; });
+  }).catch(() => {});
+}
+
+// ────────────────────────────────────────────────────────────
+// APPEARANCE: 深色玻璃 / 浅色玻璃 + 毛玻璃强度
+// ?theme=light|dark &glass=full|soft|off 便于截图/联调覆盖本地偏好
+// ────────────────────────────────────────────────────────────
+const Theme = {
+  _url(key) { return new RegExp('[?&]' + key + '=([a-z]+)').exec(location.search)?.[1]; },
+  get() {
+    const q = this._url('theme');
+    if (q === 'light' || q === 'dark') return q;
+    return localStorage.getItem('monopoly_theme') === 'light' ? 'light' : 'dark';
+  },
+  glass() {
+    const q = this._url('glass');
+    if (q === 'off' || q === 'soft') return q;
+    const g = localStorage.getItem('monopoly_glass');
+    return g === 'off' || g === 'soft' ? g : 'full';
+  },
+  apply() {
+    const d = document.documentElement;
+    const t = this.get();
+    d.setAttribute('data-theme', t);
+    d.setAttribute('data-glass', this.glass());
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', t === 'light' ? '#e8eefb' : '#070b1c');
+    const icon = t === 'light' ? '☀️' : '🌙';
+    if (els.themeBtn) {
+      els.themeBtn.textContent = icon;
+      els.themeBtn.setAttribute('aria-label', t === 'light' ? '切换为深色主题' : '切换为浅色主题');
+    }
+    if (els.themeBtnLobby) {
+      els.themeBtnLobby.textContent = icon;
+      els.themeBtnLobby.setAttribute('aria-label', t === 'light' ? '切换为深色主题' : '切换为浅色主题');
+    }
+  },
+  toggle() {
+    localStorage.setItem('monopoly_theme', this.get() === 'light' ? 'dark' : 'light');
+    this.apply();
+  },
+  set(t) {
+    localStorage.setItem('monopoly_theme', t === 'light' ? 'light' : 'dark');
+    this.apply();
+  },
+  setGlass(level) {
+    localStorage.setItem('monopoly_glass', level);
+    this.apply();
+  },
+};
+Theme.apply();
+
 function toast(msg, type = 'info') {
   const t = document.createElement('div');
   t.className = `toast toast-${type}`;
@@ -214,23 +313,191 @@ function toast(msg, type = 'info') {
   }, 2600);
 }
 
-function showModal(title, html, footer = '') {
+// ────────────────────────────────────────────────────────────
+// A11Y: 焦点陷阱 + 弹窗栈
+// 所有弹窗都经 showModal / hideModal 进出，因此只需在这一对出入口
+// 上做焦点管理：打开时把焦点移入并把 Tab 圈在内部，关闭时还原焦点。
+// modalStack 栈式管理：showModal 语义是「替换」，新弹窗继承栈底的
+// 触发元素（真正打开弹窗的那个按钮），关到空栈时才把焦点还给它。
+// ────────────────────────────────────────────────────────────
+const FOCUSABLE_SEL = [
+  'a[href]', 'area[href]', 'button:not([disabled])', 'input:not([disabled])',
+  'select:not([disabled])', 'textarea:not([disabled])', 'summary',
+  '[contenteditable="true"]', 'audio[controls]', 'video[controls]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+const modalStack = []; // { dialog, trigger, dismissible }
+const MODAL_TITLE_ID = 'modalTitleText';
+
+function dialogFocusables(dialog) {
+  return Array.prototype.slice.call(dialog.querySelectorAll(FOCUSABLE_SEL))
+    .filter(el => el.getAttribute('aria-hidden') !== 'true');
+}
+
+// 当前真正显示在屏幕上的弹窗栈顶（showModal 是替换语义，栈里可能残留已移除的弹窗）
+function currentModal() {
+  for (let i = modalStack.length - 1; i >= 0; i--) {
+    const m = modalStack[i];
+    if (m && m.dialog && m.dialog.isConnected) return m;
+  }
+  return null;
+}
+
+// 该弹窗能否被 ESC / 点遮罩关闭。以入栈时的记录为准，
+// 兜底读 data-dismissible（直接写 DOM 的调用方式也能生效）。默认「可关」。
+function modalDismissible(entry) {
+  const m = entry || currentModal();
+  if (!m) return true;
+  if (typeof m.dismissible === 'boolean') return m.dismissible;
+  return m.dialog.getAttribute('data-dismissible') !== 'false';
+}
+
+function focusIntoDialog(dialog) {
+  const list = dialogFocusables(dialog);
+  const target = list[0] || dialog;
+  try { target.focus(); } catch (e) { /* 忽略 focus 异常 */ }
+}
+
+// 打开一个弹窗：入栈 + 焦点移入。inheritTrigger 用于「弹窗里再开弹窗」
+// dismissible = false 表示需应答弹窗（ESC / 点遮罩都不关闭）
+function trapFocus(dialog, inheritTrigger, dismissible) {
+  if (!dialog) return;
+  const prev = modalStack[modalStack.length - 1];
+  const trigger = inheritTrigger || (prev && prev.trigger) ||
+    (document.activeElement && document.activeElement !== document.body ? document.activeElement : null);
+  // showModal 会整体替换 modalRoot：旧弹窗 DOM 已消失，先出栈再入栈
+  if (prev && !prev.dialog.isConnected) modalStack.pop();
+  modalStack.push({ dialog, trigger, dismissible: dismissible !== false });
+  focusIntoDialog(dialog);
+}
+
+// 关闭栈顶弹窗：把焦点交还上层弹窗，或在栈空时还原到最初的触发元素
+function releaseFocus() {
+  const top = modalStack.pop();
+  if (!top) return;
+  // showModal 是替换语义，栈里可能残留已被移除的弹窗 → 一并丢弃
+  while (modalStack.length && !modalStack[modalStack.length - 1].dialog.isConnected) modalStack.pop();
+  const prev = modalStack[modalStack.length - 1];
+  if (prev) { focusIntoDialog(prev.dialog); return; }
+  const trigger = top.trigger && top.trigger.isConnected ? top.trigger : null;
+  if (trigger && typeof trigger.focus === 'function') {
+    try { trigger.focus(); } catch (e) { /* 元素不可聚焦则忽略 */ }
+  }
+}
+
+// 弹窗内的键盘行为：ESC 关闭（仅可关弹窗）/ Tab 循环 / 空格回车不再触发全局快捷键
+function handleModalKeys(e) {
+  const top = modalStack[modalStack.length - 1];
+  if (!top || !top.dialog.isConnected) return;
+  const dialog = top.dialog;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopImmediatePropagation(); // 避免同时命中全局快捷键里已有的 ESC 逻辑（含 ended 态刷新）
+    if (!modalDismissible(top)) {
+      nudgeModal(dialog);        // 需应答弹窗：ESC 不关闭，给一次轻提示
+      return;
+    }
+    hideModal();
+    return;
+  }
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const list = dialogFocusables(dialog);
+    if (!list.length) { dialog.focus(); return; }
+    const idx = list.indexOf(document.activeElement);
+    const next = idx < 0
+      ? (e.shiftKey ? list.length - 1 : 0)
+      : (idx + (e.shiftKey ? -1 : 1) + list.length) % list.length;
+    try { list[next].focus(); } catch (err) { /* ignore */ }
+    return;
+  }
+  if ((e.key === 'Enter' || e.key === ' ') && dialog.contains(e.target)) {
+    // 交给弹窗内控件自己处理，不再落到全局掷骰/交易快捷键
+    e.stopImmediatePropagation();
+  }
+}
+document.addEventListener('keydown', handleModalKeys);
+
+// 让 div 类自定义可点击元素支持键盘（Enter / Space）激活
+function makeKeyboardActivatable(el, handler) {
+  if (!el) return el;
+  el.setAttribute('tabindex', '0');
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();     // 阻止空格滚动页面
+      e.stopPropagation();    // 阻止冒泡到全局快捷键
+      handler(e);
+    }
+  });
+  return el;
+}
+
+function setAriaExpanded(el, expanded) {
+  if (el) el.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+}
+
+// dismissible = false：需应答弹窗（购地确认 / 交易 / 购地提案 / 拍卖应答），
+// ESC、点遮罩、右上 × 都不会关闭，只能走弹窗内的应答按钮或服务端超时。
+// 默认 true：纯信息弹窗（帮助 / 设置 / 趋势 / 回放 / 总览）可关。
+function showModal(title, html, footer = '', dismissible = true) {
+  const canClose = dismissible !== false;
   els.modalRoot.innerHTML = `
     <div class="modal">
-      <div class="modal-content">
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="${MODAL_TITLE_ID}" tabindex="-1" data-dismissible="${canClose ? 'true' : 'false'}">
         <div class="modal-header">
-          <div class="modal-title">${title}</div>
-          <button class="modal-close" onclick="hideModal()">×</button>
+          <div class="modal-title" id="${MODAL_TITLE_ID}">${title}</div>
+          <button class="modal-close" aria-label="关闭弹窗" onclick="modalCloseRequest()">×</button>
         </div>
         <div class="modal-body">${html}</div>
         <div class="modal-footer">${footer}</div>
       </div>
     </div>
   `;
+  const overlay = els.modalRoot.querySelector('.modal');
+  const dialog = els.modalRoot.querySelector('.modal-content');
+  // 遮罩点击：可关的直接关闭；不可关的给一次抖动 + toast 反馈
+  if (overlay && dialog) {
+    overlay.addEventListener('click', e => {
+      if (e.target !== overlay) return; // 只处理点在遮罩本身上的点击，弹窗内部点击不算
+      if (modalDismissible()) hideModal();
+      else nudgeModal(dialog);
+    });
+  }
+  trapFocus(dialog, undefined, canClose);
 }
 
-function hideModal() { els.modalRoot.innerHTML = ''; }
+// 右上角 × ：与 ESC 同一套白名单语义
+function modalCloseRequest() {
+  if (modalDismissible()) hideModal();
+  else nudgeModal();
+}
+
+// 轻提示「这个弹窗需要你应答」：位移抖动（不依赖 CSS）+ toast
+function nudgeModal(dialog) {
+  const target = dialog || (currentModal() && currentModal().dialog);
+  if (!target) return;
+  try {
+    const reduceMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!reduceMotion && typeof target.animate === 'function') {
+      target.animate([
+        { transform: 'translateX(0)' }, { transform: 'translateX(-6px)' },
+        { transform: 'translateX(6px)' }, { transform: 'translateX(-4px)' },
+        { transform: 'translateX(4px)' }, { transform: 'translateX(0)' },
+      ], { duration: 240, easing: 'ease-in-out' });
+    }
+  } catch (e) { /* 动画不可用时只留 toast */ }
+  toast('请先完成当前操作', 'info');
+}
+
+function hideModal() {
+  releaseFocus();
+  els.modalRoot.innerHTML = '';
+}
 window.hideModal = hideModal;
+window.modalCloseRequest = modalCloseRequest;
+window.trapFocus = trapFocus;
 
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
@@ -273,6 +540,9 @@ function showView(view) {
     els.lobby.classList.add('hidden');
     els.mainApp.classList.remove('hidden');
   }
+  // 「跳到主内容」的目标随视图变化，否则会跳到被隐藏的 <main>
+  const skip = document.querySelector('.skip-link');
+  if (skip) skip.setAttribute('href', view === 'lobby' ? '#lobby' : '#mainContent');
 }
 
 // ────────────────────────────────────────────────────────────
@@ -286,10 +556,7 @@ function init() {
   renderAvatarGrid();
   els.lobbyName.value = localStorage.getItem('monopoly_name') || '';
   els.joinRoomInput.value = localStorage.getItem('monopoly_room') || '';
-  // 版本号与 package.json 同步
-  fetch('/package.json').then(r => r.json()).then(p => {
-    document.querySelectorAll('#verLabel').forEach(el => { el.textContent = 'v' + p.version; });
-  }).catch(() => {});
+  syncVersion();
   showView('lobby');
   socket.emit('getRooms');
   socket.emit('getStats', { name: localStorage.getItem('monopoly_name') || '' });
@@ -370,10 +637,7 @@ function goBackToLobby() {
   els.chatInput.value = '';
   localStorage.removeItem('monopoly_room');
   els.joinRoomInput.value = '';
-  // 版本号与 package.json 同步
-  fetch('/package.json').then(r => r.json()).then(p => {
-    document.querySelectorAll('#verLabel').forEach(el => { el.textContent = 'v' + p.version; });
-  }).catch(() => {});
+  syncVersion();
   showView('lobby');
   socket.emit('getRooms');
   socket.emit('getStats', { name: localStorage.getItem('monopoly_name') || '' });
@@ -390,10 +654,7 @@ window.doLeaveRoom = function() {
   els.chatInput.value = '';
   localStorage.removeItem('monopoly_room');
   els.joinRoomInput.value = '';
-  // 版本号与 package.json 同步
-  fetch('/package.json').then(r => r.json()).then(p => {
-    document.querySelectorAll('#verLabel').forEach(el => { el.textContent = 'v' + p.version; });
-  }).catch(() => {});
+  syncVersion();
   showView('lobby');
   socket.emit('getRooms');
   socket.emit('getStats', { name: localStorage.getItem('monopoly_name') || '' });
@@ -432,7 +693,7 @@ function copyInviteLink() {
 function showInviteFallback(url) {
   showModal(
     '📋 邀请链接',
-    `<p style="font-size:13px;word-break:break-all;background:var(--bg-darker);padding:10px;border-radius:8px;color:var(--text-primary);">${escapeHtml(url)}</p>
+    `<p class="code-block">${escapeHtml(url)}</p>
      <p style="font-size:12px;color:var(--text-tertiary);margin-top:8px;">复制上面的链接发给朋友，打开即可直接进房。</p>`,
     `<button class="btn btn-sm btn-ghost" onclick="hideModal()">关闭</button>`
   );
@@ -491,15 +752,25 @@ function renderAvatarGrid() {
   const current = localStorage.getItem('monopoly_avatar') || PLAYER_AVATARS[0];
   state.selectedAvatar = current;
   els.avatarGrid.innerHTML = '';
+  els.avatarGrid.setAttribute('role', 'radiogroup');
+  const pickAvatar = (a, d) => {
+    state.selectedAvatar = a;
+    els.avatarGrid.querySelectorAll('.avatar-option').forEach(x => {
+      x.classList.remove('selected');
+      x.setAttribute('aria-checked', 'false');
+    });
+    d.classList.add('selected');
+    d.setAttribute('aria-checked', 'true');
+  };
   PLAYER_AVATARS.forEach(a => {
     const d = document.createElement('div');
     d.className = 'avatar-option' + (a === current ? ' selected' : '');
     d.textContent = a;
-    d.onclick = () => {
-      state.selectedAvatar = a;
-      els.avatarGrid.querySelectorAll('.avatar-option').forEach(x => x.classList.remove('selected'));
-      d.classList.add('selected');
-    };
+    d.setAttribute('role', 'radio');
+    d.setAttribute('aria-checked', a === current ? 'true' : 'false');
+    d.setAttribute('aria-label', '使用头像 ' + a);
+    makeKeyboardActivatable(d, () => pickAvatar(a, d));
+    d.onclick = () => pickAvatar(a, d);
     els.avatarGrid.appendChild(d);
   });
 }
@@ -565,11 +836,15 @@ function setupEventListeners() {
     const a = state.game?.auction;
     if (a) state.auctionHiddenNo = a.no;
     els.auctionPanel.classList.add('hidden');
+    setAriaExpanded(els.apHideBtn, false);
   });
   els.tradeBtn?.addEventListener('click', () => openTradeModal());
   els.botBtn?.addEventListener('click', () => openBotModal());
   els.settingsBtn?.addEventListener('click', () => openSettings());
   els.helpBtn?.addEventListener('click', () => openHelp());
+  els.helpBtnLobby?.addEventListener('click', () => openHelp());
+  els.themeBtn?.addEventListener('click', () => Theme.toggle());
+  els.themeBtnLobby?.addEventListener('click', () => Theme.toggle());
 
   els.zoomIn?.addEventListener('click', () => changeZoom(0.1));
   els.zoomOut?.addEventListener('click', () => changeZoom(-0.1));
@@ -583,12 +858,20 @@ function setupEventListeners() {
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
-    if (e.key === 'h' || e.key === 'H') { if (!e.repeat) openHelp(); return; }
+    // 弹窗打开中：h（帮助叠帮助）与 T（误改主题）一律忽略
+    const modalOpen = !!currentModal();
+    if (!modalOpen) {
+      if (e.key === 'h' || e.key === 'H') { if (!e.repeat) openHelp(); return; }
+      if (e.key === 'T' && !e.repeat) { Theme.toggle(); return; }
+    }
     if (state.game?.ended) {
       if (e.key === 'Escape') window.location.reload();
       if (e.key === 'Enter') { e.preventDefault(); socket.emit('reset'); }
       return;
     }
+    // 弹窗打开中屏蔽所有会操作对局的快捷键（空格掷骰 / b 购地 / e 结束回合 /
+    // t 交易 / p 交保释金 / 1·2·3 拍卖加价），避免在帮助等弹窗里误触
+    if (modalOpen) return;
 
     const myTurn = isMyTurn() && !state.game.diceAnim;
     switch (e.key.toLowerCase()) {
@@ -667,138 +950,182 @@ function computeMonopolies() {
   return map;
 }
 
+// 首次为单个格子建立「常驻骨架」：静态子节点 + 三个动态徽标（隐藏态）
+function buildCellSkeleton(cell) {
+  const div = document.createElement('div');
+  div.className = `cell ${cell.type}`;
+  // 服务器 pos 为 0-based (0~10)，CSS Grid 线为 1-based (1~11)，必须 +1
+  div.style.gridColumn = cell.pos.c + 1;
+  div.style.gridRow = cell.pos.r + 1;
+  div.dataset.cellId = cell.id;
+  if ([0, 10, 20, 30].includes(cell.id)) div.classList.add('corner');
+
+  // Group color strip on the edge facing board center
+  if (cell.group) {
+    const strip = document.createElement('div');
+    strip.className = 'color-strip';
+    strip.style.background = GROUP_META[cell.group]?.color || '#ccc';
+    const r = cell.pos.r, c = cell.pos.c;
+    if (r === 10) strip.classList.add('strip-top');
+    else if (r === 0) strip.classList.add('strip-bottom');
+    else if (c === 0) strip.classList.add('strip-right');
+    else strip.classList.add('strip-left');
+    div.appendChild(strip);
+  }
+
+  // Icon for special cells
+  if (ICONS_META[cell.type] && cell.type !== 'city') {
+    const icon = document.createElement('div');
+    icon.className = 'cell-icon';
+    icon.textContent = ICONS_META[cell.type];
+    div.appendChild(icon);
+  }
+
+  // Name
+  const nameEl = document.createElement('div');
+  nameEl.className = 'cell-name';
+  nameEl.textContent = cell.name;
+  div.appendChild(nameEl);
+
+  if (cell.type === 'casino') {
+    const sub = document.createElement('div');
+    sub.className = 'cell-price';
+    sub.textContent = '赌一把';
+    div.appendChild(sub);
+  }
+
+  // Price
+  let priceEl = null;
+  if (cell.price > 0) {
+    priceEl = document.createElement('div');
+    priceEl.className = 'cell-price';
+    priceEl.textContent = `¥${(cell.price / 100) % 1 === 0 ? cell.price / 100 : cell.price}`;
+    div.appendChild(priceEl);
+  }
+
+  // 动态节点常驻（初始隐藏，patch 时开关）：house / owner / rent
+  const house = document.createElement('div');
+  house.className = 'house-badge';
+  div.appendChild(house);
+
+  const dot = document.createElement('div');
+  dot.className = 'owner-dot';
+  div.appendChild(dot);
+
+  const rent = document.createElement('div');
+  rent.className = 'rent-badge';
+  div.appendChild(rent);
+
+  // 点击/键盘打开地产详情
+  div.setAttribute('role', 'button');
+  div.setAttribute('aria-label', cell.name + '，查看地产详情');
+  makeKeyboardActivatable(div, () => openPropertyModal(cell.id));
+  div.onclick = () => openPropertyModal(cell.id);
+
+  const entry = { el: div, name: nameEl, price: priceEl, house, dot, rent, sig: cellStaticSig(cell) };
+  boardCells[cell.id] = entry;
+  return entry;
+}
+
+// patch 一个已存在格子的动态部分（owner/level/mortgage/rent/高亮/垄断），不重建节点
+function applyCellDynamic(entry, cell, monopolies) {
+  const div = entry.el;
+  cellVisible(entry.house, cell.type === 'city' && cell.level > 0);
+  if (cell.type === 'city' && cell.level > 0) {
+    entry.house.textContent = cell.level >= 5 ? '🏨' : '🏠'.repeat(cell.level);
+  }
+  cellVisible(entry.dot, !!cell.owner);
+  if (cell.owner) entry.dot.style.background = playerColor(cell.owner);
+
+  const showRent = !!(cell.owner && !cell.mortgaged &&
+    (cell.type === 'city' || cell.type === 'railroad' || cell.type === 'utility'));
+  cellVisible(entry.rent, showRent);
+  if (showRent) entry.rent.textContent = (cell.rent === -1) ? '骰×40' : '¥' + cell.rent;
+
+  div.classList.toggle('mortgaged', !!cell.mortgaged);
+
+  div.classList.toggle('cell-flash', !!(state.flashCells && state.flashCells.includes(cell.id)));
+  div.classList.toggle('cell-gold', !!(state.goldCells && state.goldCells.includes(cell.id)));
+  div.classList.toggle('cell-auction', !!(state.game.auction && state.game.auction.cellId === cell.id));
+  if (cell.group && monopolies[cell.group]) {
+    div.classList.add('monopoly-cell');
+    div.style.setProperty('--mono-color', playerColor(monopolies[cell.group]));
+  } else {
+    div.classList.remove('monopoly-cell');
+    div.style.removeProperty('--mono-color');
+  }
+
+  div.title = cellTitle(cell);
+  div.setAttribute('aria-label', cellTitle(cell) + '，查看地产详情');
+}
+
 function renderBoard() {
   const g = displayGame();
   if (!state.game) return;
-  // 只清理格子与中央面板，tokenLayer 保留以支持移动过渡动画
-  Array.from(els.board.children).forEach(ch => {
-    if (ch !== els.tokenLayer) ch.remove();
-  });
+  // tokenLayer 保留以支持移动过渡动画，绝不清理
 
   const monopolies = computeMonopolies();
   g.board.forEach(cell => {
-    const div = document.createElement('div');
-    div.className = `cell ${cell.type}`;
-    // 服务器 pos 为 0-based (0~10)，CSS Grid 线为 1-based (1~11)，必须 +1
-    div.style.gridColumn = cell.pos.c + 1;
-    div.style.gridRow = cell.pos.r + 1;
-    div.dataset.cellId = cell.id;
-    if ([0, 10, 20, 30].includes(cell.id)) div.classList.add('corner');
-
-    // Group color strip on the edge facing board center
-    if (cell.group) {
-      const strip = document.createElement('div');
-      strip.className = 'color-strip';
-      strip.style.background = GROUP_META[cell.group]?.color || '#ccc';
-      const r = cell.pos.r, c = cell.pos.c;
-      if (r === 10) strip.classList.add('strip-top');
-      else if (r === 0) strip.classList.add('strip-bottom');
-      else if (c === 0) strip.classList.add('strip-right');
-      else strip.classList.add('strip-left');
-      div.appendChild(strip);
+    const entry = boardCells[cell.id];
+    if (!entry) {
+      // 首次：建骨架并挂载（append 顺序与旧全量重建一致：tokenLayer → 格子 → 中央面板）
+      const fresh = buildCellSkeleton(cell);
+      applyCellDynamic(fresh, cell, monopolies);
+      els.board.appendChild(fresh.el);
+    } else if (entry.sig !== cellStaticSig(cell)) {
+      // 静态签名变化（换地图 / 改名 / 改类型 / 改价格）→ 仅重建该格
+      const fresh = buildCellSkeleton(cell);
+      applyCellDynamic(fresh, cell, monopolies);
+      entry.el.replaceWith(fresh.el);
+      boardCells[cell.id] = fresh;
+    } else {
+      // 常态：只 patch 动态状态，节点原样复用
+      applyCellDynamic(entry, cell, monopolies);
     }
-
-    // Icon for special cells
-    const ICONS = { go:'🏁', jail:'🔒', parking:'🅿️', gotojail:'🚔', chance:'❓', chest:'📦', tax:'🏛️', railroad:'🚂', utility:'💡', casino:'🎰' };
-    if (ICONS[cell.type] && cell.type !== 'city') {
-      const icon = document.createElement('div');
-      icon.className = 'cell-icon';
-      icon.textContent = ICONS[cell.type];
-      div.appendChild(icon);
-    }
-
-    // Name
-    const nameEl = document.createElement('div');
-    nameEl.className = 'cell-name';
-    nameEl.textContent = cell.name;
-    div.appendChild(nameEl);
-
-    if (cell.type === 'casino') {
-      const sub = document.createElement('div');
-      sub.className = 'cell-price';
-      sub.textContent = '赌一把';
-      div.appendChild(sub);
-    }
-
-    // Price
-    if (cell.price > 0) {
-      const priceEl = document.createElement('div');
-      priceEl.className = 'cell-price';
-      priceEl.textContent = `¥${(cell.price / 100) % 1 === 0 ? cell.price / 100 : cell.price}`;
-      div.appendChild(priceEl);
-    }
-
-    // House level indicator
-    if (cell.type === 'city' && cell.level > 0) {
-      const lv = document.createElement('div');
-      lv.className = 'house-badge';
-      lv.textContent = cell.level >= 5 ? '🏨' : '🏠'.repeat(cell.level);
-      div.appendChild(lv);
-    }
-
-    // Owner dot
-    if (cell.owner) {
-      const dot = document.createElement('div');
-      dot.className = 'owner-dot';
-      dot.style.background = playerColor(cell.owner);
-      div.appendChild(dot);
-    }
-
-    // Mortgaged badge
-    if (cell.mortgaged) {
-      div.classList.add('mortgaged');
-    }
-
-    // Current rent badge (server-computed; -1 = dice-based utility)
-    if (cell.owner && !cell.mortgaged &&
-        (cell.type === 'city' || cell.type === 'railroad' || cell.type === 'utility')) {
-      const rb = document.createElement('div');
-      rb.className = 'rent-badge';
-      rb.textContent = (cell.rent === -1) ? '骰×40' : '¥' + cell.rent;
-      div.appendChild(rb);
-    }
-
-    if (state.flashCells && state.flashCells.includes(cell.id)) div.classList.add('cell-flash');
-    if (state.goldCells && state.goldCells.includes(cell.id)) div.classList.add('cell-gold');
-    if (state.game.auction && state.game.auction.cellId === cell.id) div.classList.add('cell-auction');
-    if (cell.group && monopolies[cell.group]) {
-      div.classList.add('monopoly-cell');
-      div.style.setProperty('--mono-color', playerColor(monopolies[cell.group]));
-    }
-
-    const ownerName = cell.owner ? (state.game.players[cell.owner]?.name || '') : '';
-    div.title = `${cell.name}${cell.price ? ' · ¥' + cell.price : ''}` +
-      `${ownerName ? ' · ' + ownerName : ''}` +
-      `${cell.mortgaged ? ' · 已抵押' : ''}` +
-      `${cell.rent > 0 ? ' · 租金 ¥' + cell.rent : ''}`;
-
-    // Click: property details
-    div.onclick = () => openPropertyModal(cell.id);
-    els.board.appendChild(div);
   });
 
-  // ── 棋盘中央信息面板（显式定位在 11×11 网格中心：行2-10 列2-10）──
-  const center = document.createElement('div');
-  center.className = 'board-center';
-  center.style.gridArea = '2 / 2 / 11 / 11';
-  const dice = state.game.dice;
+  // 移除已不存在的格子（换地图后格子数变少等异常情况）
+  const aliveIds = new Set(g.board.map(c => c.id));
+  Object.keys(boardCells).forEach(id => {
+    if (aliveIds.has(Number(id))) return;
+    const e = boardCells[id];
+    if (e && e.el && e.el.parentNode) e.el.parentNode.removeChild(e.el);
+    delete boardCells[id];
+  });
+
+  // ── 棋盘中央信息面板：仅内容变化才重建 ──
+  renderBoardCenter(g);
+
+  renderTokens();
+}
+
+// 中央信息面板（显式定位在 11×11 网格中心：行2-10 列2-10），仅在内容变化时更新 innerHTML
+function renderBoardCenter(stateGame) {
+  const dice = stateGame.dice;
   const faces = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
-  const cur = state.game.players[state.game.order[state.game.turnIndex]];
+  const cur = stateGame.players[stateGame.order[stateGame.turnIndex]];
   let turnLine = '等待开始';
-  if (state.game.started) {
-    if (state.game.ended) turnLine = '🏁 已结束';
+  if (stateGame.started) {
+    if (stateGame.ended) turnLine = '🏁 已结束';
     else turnLine = `轮到 ${cur ? (cur.avatar + ' ' + escapeHtml(cur.name)) : '...'}${cur && cur.isBot ? ' 🤖' : ''}`;
   }
-  center.innerHTML = `
+  const html = `
     <div class="bc-logo">MONOPOLY</div>
     <div class="bc-sub">大富翁在线</div>
     <div class="bc-dice">${dice ? `${faces[dice[0] - 1]}${faces[dice[1] - 1]} <b>${dice[0] + dice[1]}</b>` : '🎲🎲'}</div>
     <div class="bc-turn">${turnLine}</div>
-    <div class="bc-round">第 ${state.game.roundCount || 1}${state.game.maxRounds ? '/' + state.game.maxRounds : ''} 回合 · ${state.game.order.length} 人${state.game.startedAt ? ' · 已用 ' + fmtElapsed(state.game.startedAt) : ''}${state.replayIdx !== null ? ' · 🎥 回放中' : ''}</div>
-    ${state.game.jackpot > 0 ? `<div class="bc-jackpot">🎁 停车场奖池 ¥${state.game.jackpot.toLocaleString()}</div>` : ''}
+    <div class="bc-round">第 ${stateGame.roundCount || 1}${stateGame.maxRounds ? '/' + stateGame.maxRounds : ''} 回合 · ${stateGame.order.length} 人${stateGame.startedAt ? ' · 已用 ' + fmtElapsed(stateGame.startedAt) : ''}${state.replayIdx !== null ? ' · 🎥 回放中' : ''}</div>
+    ${stateGame.jackpot > 0 ? `<div class="bc-jackpot">🎁 停车场奖池 ¥${stateGame.jackpot.toLocaleString()}</div>` : ''}
   `;
-  els.board.appendChild(center);
-  renderTokens();
+  if (!boardCenterEl || boardCenterEl.parentNode !== els.board || boardCenterHtml !== html) {
+    if (boardCenterEl && boardCenterEl.parentNode) boardCenterEl.parentNode.removeChild(boardCenterEl);
+    boardCenterEl = document.createElement('div');
+    boardCenterEl.className = 'board-center';
+    boardCenterEl.style.gridArea = '2 / 2 / 11 / 11';
+    boardCenterEl.innerHTML = html;
+    els.board.appendChild(boardCenterEl);
+    boardCenterHtml = html;
+  }
 }
 
 // ────────────────────────────────────────────────────────────
@@ -843,6 +1170,9 @@ function renderTokens() {
       el.dataset.pid = pid;
       el.className = 'gtoken' + (pid === state.myToken ? ' me' : '');
       el.style.transition = 'none'; // 首次出现不播放动画
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-label', p.name + ' 的棋子，查看资产总览');
+      makeKeyboardActivatable(el, () => openPlayerModal(pid));
       el.addEventListener('click', () => openPlayerModal(pid));
       layer.appendChild(el);
       requestAnimationFrame(() => requestAnimationFrame(() => { el.style.transition = ''; }));
@@ -852,6 +1182,7 @@ function renderTokens() {
     el.style.background = playerColor(pid);
     el.textContent = p.avatar || p.name.charAt(0);
     el.title = p.name + (pid === state.myToken ? ' (我)' : '');
+    el.setAttribute('aria-label', p.name + (pid === state.myToken ? '（我）' : '') + ' 的棋子，查看资产总览');
 
     const disp = parseInt(el.dataset.dispPos ?? String(p.pos), 10);
     if (disp === p.pos) return;
@@ -986,6 +1317,10 @@ function openPropertyModal(cellId) {
     `;
   }
 
+  // 购地确认态：本人停在该格 + 无主 + 买得起 → 弹窗即「买 / 放弃」的应答入口
+  const me = state.game.players[state.myToken];
+  const isBuyPrompt = !mine && !cell.owner && onIt && cell.price > 0 && me && me.money >= cell.price;
+
   showModal(
     `${meta ? `<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${meta.color};vertical-align:middle;"></span> ` : ''}🏘 ${escapeHtml(cell.name)}`,
     `
@@ -997,16 +1332,16 @@ function openPropertyModal(cellId) {
         <p><strong>所有者：</strong>${owner ? `${owner.avatar} ${escapeHtml(owner.name)}${mine ? '（你）' : ''}` : '无主，可购买'}</p>
         ${cell.mortgaged ? '<p style="color:var(--accent-danger);">🏦 该地产已抵押，无租金收入</p>' : ''}
         ${cell.type === 'city' && state.game.bank ? `<p style="font-size:12px;color:var(--text-tertiary);">🏦 银行房源：🏠 ×${state.game.bank.houses} ｜ 🏨 ×${state.game.bank.hotels}</p>` : ''}
-        ${!mine && onIt && !cell.owner && cell.price > 0 && state.game.players[state.myToken]?.money >= cell.price
-          ? '<p style="color:var(--accent-success);">✅ 你在此格，可以购买</p>' : ''}
+        ${isBuyPrompt ? '<p style="color:var(--accent-success);">✅ 你在此格，可以购买</p>' : ''}
       </div>
     `,
     `
-      ${!mine && !cell.owner && onIt && cell.price > 0 && state.game.players[state.myToken]?.money >= cell.price
-        ? `<button class="btn btn-sm btn-primary" onclick="hideModal();socket.emit('buy')">💰 购买 ¥${cell.price.toLocaleString()}</button>` : ''}
+      ${isBuyPrompt ? `<button class="btn btn-sm btn-primary" onclick="hideModal();socket.emit('buy')">💰 购买 ¥${cell.price.toLocaleString()}</button>` : ''}
       ${actions}
       <button class="btn btn-sm btn-ghost" onclick="hideModal()">关闭</button>
-    `
+    `,
+    // 购地确认必须显式应答（购买或关闭按钮），ESC / 遮罩不关
+    !isBuyPrompt
   );
 }
 
@@ -1139,7 +1474,7 @@ function groupChipsHtml(p) {
     const meta = GROUP_META[g];
     if (!meta || total === 0) return '';
     const cls = n === total ? ' full' : (n === total - 1 ? ' near' : '');
-    return `<span class="gchip${cls}" style="background:${meta.color};" title="${meta.name}${n === total ? '：已集齐！' : n === total - 1 ? '：差 1 块集齐！' : ''}">${meta.name} ${n}/${total}</span>`;
+    return `<span class="gchip${cls}" style="background:${meta.color};color:${textOn(meta.color)};" title="${meta.name}${n === total ? '：已集齐！' : n === total - 1 ? '：差 1 块集齐！' : ''}">${meta.name} ${n}/${total}</span>`;
   }).filter(Boolean);
   if (!chips.length) return '';
   return `<div class="group-chips">${chips.join('')}</div>`;
@@ -1158,54 +1493,102 @@ function statusLine(p, isMe) {
 function renderPlayers() {
   if (!state.game) return;
   const rg = displayGame();
-  els.playersList.innerHTML = '';
   const ordered = [...rg.order].sort((a, b) => {
     const pa = rg.players[a], pb = rg.players[b];
     return (pa && pa.bankrupt ? 1 : 0) - (pb && pb.bankrupt ? 1 : 0);
   });
+
+  const seen = new Set(ordered);
+  // 移除已离开/破产被剔除的玩家卡片
+  Object.keys(playerCards).forEach(pid => {
+    if (!seen.has(pid)) {
+      const c = playerCards[pid];
+      if (c && c.div && c.div.parentNode) c.div.parentNode.removeChild(c.div);
+      delete playerCards[pid];
+    }
+  });
+
+  // 按 sorted 顺序追加（已存在的节点 appendChild = 移动；新建 = 创建）
+  // 仅当顺序真的变化时才移动，避免无谓 reflow
+  const orderSig = ordered.join(',');
+  const needReorder = orderSig !== playerOrderSig;
   ordered.forEach(pid => {
     const p = rg.players[pid];
     if (!p) return;
     const isCurrentTurn = rg.order[rg.turnIndex] === pid && rg.started && !rg.ended;
     const isMe = pid === state.myToken;
     const isHost = pid === state.game.hostToken;
-    const teamChip = p.team ? `<span style="font-size:9px;background:${p.team === 'A' ? '#ff6b6b' : '#4fc3f7'};color:#fff;border-radius:4px;padding:0 4px;margin-left:4px;">${p.team}</span>` : '';
+    const teamChip = p.team ? `<span class="solid-chip" style="background:${p.team === 'A' ? 'var(--player-0)' : 'var(--player-1)'};margin-left:4px;">${p.team}</span>` : '';
+    const chipsHtml = groupChipsHtml(p);
 
-    const div = document.createElement('div');
-    div.className = `player-item ${isCurrentTurn ? 'active' : ''} ${p.bankrupt ? 'bankrupt' : ''}`;
+    // 内容签名：任一字段变化才更新内部 HTML，否则原样复用
+    const sig = [
+      isCurrentTurn ? '1' : '0', p.bankrupt ? '1' : '0',
+      p.name, p.avatar, p.isBot ? '1' : '0', p.botLevel || '',
+      isMe ? '1' : '0', isHost ? '1' : '0', p.team || '',
+      p.money, p.jailFreeCards || 0, p.jailTurns || 0,
+      p.delegated ? '1' : '0', p.connected ? '1' : '0', p.origName || '',
+      p.properties ? p.properties.length : 0,
+      chipsHtml,
+    ].join('|');
 
-    const dot = document.createElement('div');
-    dot.className = 'player-dot';
-    dot.style.background = playerColor(pid);
-    dot.innerHTML = `<span style="font-size:10px;">${p.avatar}</span>`;
+    let card = playerCards[pid];
+    if (!card) {
+      const div = document.createElement('div');
+      div.className = 'player-item';
+      div.style.cursor = 'pointer';
+      div.title = '点击查看资产总览';
+      // listener 只挂一次，节点复用期间不重复绑定
+      div.setAttribute('role', 'button');
+      makeKeyboardActivatable(div, () => openPlayerModal(pid));
+      div.addEventListener('click', () => openPlayerModal(pid));
 
-    const info = document.createElement('div');
-    info.className = 'player-info';
-    info.innerHTML = `
-      <div class="player-name" style="color:${playerColor(pid)}">${teamChip}
-        ${escapeHtml(p.name)}${p.isBot ? ` <span class="bot-tag">BOT${p.botLevel === 'easy' ? '🙂' : p.botLevel === 'hard' ? '😈' : ''}</span>` : ''}
-        ${isMe ? ' <span style="color:#4fc3f7">(我)</span>' : ''}${isHost ? ' 👑' : ''}
-      </div>
-      <div class="player-status">
-        ${statusLine(p, isMe)}
-        ${p.jailFreeCards > 0 ? ` | 🎴×${p.jailFreeCards}` : ''}
-      </div>
-      ${groupChipsHtml(p)}
-    `;
+      const dot = document.createElement('div');
+      dot.className = 'player-dot';
+      const info = document.createElement('div');
+      info.className = 'player-info';
+      const money = document.createElement('div');
+      money.className = 'player-money';
 
-    const money = document.createElement('div');
-    money.className = 'player-money';
-    money.style.color = p.money > 30000 ? '#4caf50' : p.money > 0 ? '#ffeb3b' : '#ff5252';
-    money.textContent = formatMoney(p.money);
+      div.appendChild(dot);
+      div.appendChild(info);
+      div.appendChild(money);
 
-    div.appendChild(dot);
-    div.appendChild(info);
-    div.appendChild(money);
-    div.style.cursor = 'pointer';
-    div.title = '点击查看资产总览';
-    div.addEventListener('click', () => openPlayerModal(pid));
-    els.playersList.appendChild(div);
+      card = { div, dot, info, money, sig: null };
+      playerCards[pid] = card;
+      els.playersList.appendChild(div);
+    } else if (needReorder) {
+      els.playersList.appendChild(card.div); // 移动到末尾（按序）
+    }
+
+    // 增量更新：签名变化才重写 innerHTML / 文本 / class
+    if (card.sig !== sig) {
+      card.div.className = `player-item ${isCurrentTurn ? 'active' : ''} ${p.bankrupt ? 'bankrupt' : ''}`;
+      card.dot.style.background = playerColor(pid);
+      card.dot.style.color = playerColor(pid);
+      card.dot.innerHTML = `<span style="font-size:10px;">${p.avatar}</span>`;
+      card.info.innerHTML = `
+        <div class="player-name" style="color:${playerColor(pid)}">${teamChip}
+          ${escapeHtml(p.name)}${p.isBot ? ` <span class="bot-tag">BOT${p.botLevel === 'easy' ? '🙂' : p.botLevel === 'hard' ? '😈' : ''}</span>` : ''}
+          ${isMe ? ' <span style="color:var(--player-1)">(我)</span>' : ''}${isHost ? ' 👑' : ''}
+        </div>
+        <div class="player-status">
+          ${statusLine(p, isMe)}
+          ${p.jailFreeCards > 0 ? ` | 🎴×${p.jailFreeCards}` : ''}
+        </div>
+        ${chipsHtml}
+      `;
+      card.money.className = 'player-money ' + (p.money > 30000 ? 'tone-good' : p.money > 0 ? 'tone-warn' : 'tone-bad');
+      card.money.textContent = formatMoney(p.money);
+      // 无障碍：玩家卡片是 div，补可读名称 + 当前回合成焦点指示
+      card.div.setAttribute('aria-label', `${p.name}${p.isBot ? '（机器人）' : ''}${isMe ? '（我）' : ''}，`
+        + `${statusLine(p, isMe)}，现金 ${formatMoney(p.money)}，地产 ${p.properties ? p.properties.length : 0} 块，查看资产总览`);
+      if (isCurrentTurn) card.div.setAttribute('aria-current', 'true');
+      else card.div.removeAttribute('aria-current');
+      card.sig = sig;
+    }
   });
+  playerOrderSig = orderSig;
 }
 
 // ────────────────────────────────────────────────────────────
@@ -1235,6 +1618,7 @@ function renderControls() {
     els.maxRoundsSel.value = String(state.game.maxRounds || 0);
   }
   show(els.roomSettingsRow, idlePhase && isHost);
+  show(els.roomSetupCard, idlePhase && isHost);
   if (idlePhase && isHost && state.game.settings) {
     const st = state.game.settings;
     if (String(st.startMoney) !== els.startMoneySel.value) els.startMoneySel.value = String(st.startMoney);
@@ -1261,7 +1645,7 @@ function renderControls() {
   show(els.endTurnBtn, manual);
   show(els.buildBtn, manual);
   show(els.mortgageBtn, manual);
-  els.rollBtn.innerHTML = `<span class="btn-icon">🎲</span><span>${inJail && myTurn ? '试掷双数出狱' : '掷骰子'}</span>`;
+  els.rollBtn.innerHTML = `<span class="btn-emoji">🎲</span><span>${inJail && myTurn ? '试掷双数出狱' : '掷骰子'}</span>`;
   const rolled = !!state.game.currentRolled;
   const inDebt = !!(state.game.debt && state.game.debt.playerId === state.myToken);
   els.rollBtn.disabled = !(manual && myTurn && !state.game.diceAnim && !rolled && !inDebt);
@@ -1327,7 +1711,8 @@ function renderControls() {
       : '📍 点绿色「🎲 掷骰子」前进。';
   }
 
-  els.actionHint.textContent = hint;
+  // 仅在文本真变化时写入：aria-live 区域避免每次广播都重复播报
+  if (els.actionHint.textContent !== hint) els.actionHint.textContent = hint;
   updateQuickStats();
   updateTurnTimer();
 }
@@ -1480,7 +1865,6 @@ function updateQuickStats() {
 // ────────────────────────────────────────────────────────────
 function renderLog() {
   if (!state.game) return;
-  els.log.innerHTML = '';
 
   const combined = [];
   // 回放模式：只显示该帧之前的历史日志（并隐藏实时聊天）
@@ -1496,7 +1880,15 @@ function renderLog() {
   let filtered = state.logFilter === 'all' ? combined : combined.filter(e => e.type === state.logFilter);
   if (state.replayIdx !== null) filtered = filtered.filter(e => e.type === 'game');
 
-  filtered.slice(-60).reverse().forEach(item => {
+  const shown = filtered.slice(-60).reverse();
+
+  // 渲染签名：条目内容/类型/时间戳任一变化才重建，避免频繁广播时空跑 DOM
+  const sig = shown.map(i => `${i.type}::${i.ts || 0}::${i.from || ''}::${i.text || ''}`).join('##');
+  if (sig === lastLogSig) return; // 内容未变 → 复用现有 DOM（含动画/滚动状态）
+  lastLogSig = sig;
+
+  els.log.innerHTML = '';
+  shown.forEach(item => {
     const p = document.createElement('p');
     p.className = `log-entry ${item.type}`;
     const timeStr = new Date(item.ts || 0).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1578,7 +1970,7 @@ function openBotModal() {
           ${bots.map(id => {
             const b = state.game.players[id];
             const face = b.botLevel === 'easy' ? '🙂' : b.botLevel === 'hard' ? '😈' : '😐';
-            return `<span class="bot-chip">${b.avatar} ${escapeHtml(b.name)} ${face}<button class="bot-chip-x" title="移除该机器人" onclick="kickOneBot('${id}')">✕</button></span>`;
+            return `<span class="bot-chip">${b.avatar} ${escapeHtml(b.name)} ${face}<button class="bot-chip-x" aria-label="移除机器人 ${escapeHtml(b.name)}" title="移除该机器人" onclick="kickOneBot('${id}')">✕</button></span>`;
           }).join('')}
         </div>` : '<p style="font-size:13px;color:var(--text-tertiary);">还没有机器人。至少需要2名玩家才能开始游戏。</p>'}
     `,
@@ -1600,7 +1992,7 @@ function openTradeModal() {
   others.forEach(p => {
     const color = state.game.order.includes(p.id) ? playerColor(p.id) : '#7f8c8d';
     const tag = p.isBot ? ' <span class="bot-tag">BOT</span>' : '';
-    html += `<button class="btn btn-sm" style="background:${color};" onclick="selectTradeTarget('${p.id}')">${p.avatar} ${escapeHtml(p.name)}${tag} ¥${p.money.toLocaleString()}</button>`;
+    html += `<button class="btn btn-sm btn-target" style="background:${color};" onclick="selectTradeTarget('${p.id}')">${p.avatar} ${escapeHtml(p.name)}${tag} ¥${p.money.toLocaleString()}</button>`;
   });
   html += '</div>';
 
@@ -1618,7 +2010,7 @@ window.selectTradeTarget = function(pid) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;font-size:13px;">
       <div>
         <p style="font-weight:700;margin-bottom:6px;">你付出：</p>
-        <label>现金 ¥ <input type="number" id="giveMoney" value="0" min="0" max="${state.game.players[state.myToken].money}" style="width:90px;background:var(--bg-darker);color:var(--text-primary);border:1px solid var(--border-dark);border-radius:4px;padding:4px;"></label>
+        <label>现金 ¥ <input type="number" id="giveMoney" class="glass-input" value="0" min="0" max="${state.game.players[state.myToken].money}" style="width:90px;"></label>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto;">
           ${myProps.length === 0 ? '<span style="color:var(--text-tertiary);">无地产</span>' : myProps.map(id => {
             const c = state.game.board[id];
@@ -1629,7 +2021,7 @@ window.selectTradeTarget = function(pid) {
       </div>
       <div>
         <p style="font-weight:700;margin-bottom:6px;">换回（对方：${escapeHtml(target.name)}）：</p>
-        <label>现金 ¥ <input type="number" id="getMoney" value="0" min="0" max="${target.money}" style="width:90px;background:var(--bg-darker);color:var(--text-primary);border:1px solid var(--border-dark);border-radius:4px;padding:4px;"></label>
+        <label>现金 ¥ <input type="number" id="getMoney" class="glass-input" value="0" min="0" max="${target.money}" style="width:90px;"></label>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto;">
           ${tgProps.length === 0 ? '<span style="color:var(--text-tertiary);">对方无地产</span>' : tgProps.map(id => {
             const c = state.game.board[id];
@@ -1647,7 +2039,9 @@ window.selectTradeTarget = function(pid) {
     `
       <button class="btn btn-sm btn-primary" onclick="confirmTrade('${pid}')">确认交易</button>
       <button class="btn btn-sm btn-ghost" onclick="hideModal()">取消</button>
-    `
+    `,
+    // 交易编辑弹窗：填了筹码后不能被 ESC / 点遮罩误关，只能走「确认 / 取消」
+    false
   );
 };
 
@@ -1669,13 +2063,13 @@ function openSettings() {
     '⚙️ 设置',
     `
       <div class="setting-item">
-        <label>你的昵称</label>
-        <input type="text" id="nameInput" maxlength="16" value="${escapeHtml(localStorage.getItem('monopoly_name') || '')}"
-          style="background:var(--bg-darker);color:var(--text-primary);border:1px solid var(--border-dark);border-radius:6px;padding:8px;width:180px;">
+        <label for="nameInput">你的昵称</label>
+        <input type="text" id="nameInput" class="glass-input" maxlength="16" value="${escapeHtml(localStorage.getItem('monopoly_name') || '')}"
+          style="width:180px;"/>
       </div>
       <div class="setting-item">
-        <label>头像</label>
-        <select id="avatarInput" style="background:var(--bg-darker);color:var(--text-primary);border:1px solid var(--border-dark);border-radius:6px;padding:8px;">
+        <label for="avatarInput">头像</label>
+        <select id="avatarInput" class="glass-select">
           ${PLAYER_AVATARS.map(a => {
             const cur = state.game?.players?.[state.myToken]?.avatar || localStorage.getItem('monopoly_avatar');
             return `<option value="${a}" ${cur === a ? 'selected' : ''}>${a}</option>`;
@@ -1684,22 +2078,34 @@ function openSettings() {
       </div>
       ${(!state.game || (state.game.hostToken === state.myToken && !state.game.started)) ? `
       <div class="setting-item">
-        <label>🔒 房间密码（4~12位字母数字，留空保存=取消密码）</label>
-        <span style="display:flex;gap:4px;align-items:center;">
-          <input type="text" id="roomPwdInput" maxlength="12" placeholder="${(state.game && state.game.password) ? '已设置' : '未设置'}"
-            style="background:var(--bg-darker);color:var(--text-primary);border:1px solid var(--border-dark);border-radius:6px;padding:6px;width:130px;">
-        </span>
+        <label for="roomPwdInput">🔒 房间密码（4~12位字母数字，留空保存=取消密码）</label>
+        <input type="text" id="roomPwdInput" class="glass-input" maxlength="12" placeholder="${(state.game && state.game.password) ? '已设置' : '未设置'}"
+          style="width:130px;"/>
       </div>` : ''}
       <div class="setting-item">
-        <label>音效</label>
+        <label for="themeInput">🎨 界面主题</label>
+        <span style="display:flex;align-items:center;gap:8px;">
+          <select id="themeInput" class="glass-select" onchange="Theme.set(this.value)">
+            <option value="dark" ${Theme.get() === 'dark' ? 'selected' : ''}>🌙 深色玻璃</option>
+            <option value="light" ${Theme.get() === 'light' ? 'selected' : ''}>☀️ 浅色玻璃</option>
+          </select>
+          <select id="glassInput" class="glass-select" aria-label="毛玻璃强度" title="低端设备或文字发虚时可降低模糊强度" onchange="Theme.setGlass(this.value)">
+            <option value="full" ${Theme.glass() === 'full' ? 'selected' : ''}>毛玻璃：完整</option>
+            <option value="soft" ${Theme.glass() === 'soft' ? 'selected' : ''}>毛玻璃：柔和</option>
+            <option value="off" ${Theme.glass() === 'off' ? 'selected' : ''}>毛玻璃：关闭</option>
+          </select>
+        </span>
+      </div>
+      <div class="setting-item">
+        <label for="soundInput">音效</label>
         <span style="display:flex;align-items:center;gap:8px;">
           <label class="toggle"><input type="checkbox" id="soundInput" ${Sound.enabled ? 'checked' : ''}><span class="slider"></span></label>
-          <input type="range" id="volumeInput" min="0" max="100" value="${Sound.volume}" style="width:100px;" title="音量">
+          <input type="range" id="volumeInput" min="0" max="100" value="${Sound.volume}" aria-label="音量" style="width:100px;" title="音量">
           <span style="font-size:11px;color:var(--text-tertiary);">${Sound.volume}%</span>
         </span>
       </div>
       <div class="setting-item">
-        <label>自动购买（落地即买下可负担的无主地产）</label>
+        <label for="autoBuyInput">自动购买（落地即买下可负担的无主地产）</label>
         <label class="toggle"><input type="checkbox" id="autoBuyInput" ${(state.game && state.game.players[state.myToken] && state.game.players[state.myToken].autoBuy) ? 'checked' : ''}><span class="slider"></span></label>
       </div>
       <p style="font-size:12px;color:var(--text-tertiary);margin-top:8px;">昵称/头像在下一局开始时生效；如需换房间请返回大厅。</p>
@@ -1714,6 +2120,10 @@ function openSettings() {
 window.saveSettings = function() {
   const name = document.getElementById('nameInput')?.value?.trim();
   const avatar = document.getElementById('avatarInput')?.value;
+  const themeSel = document.getElementById('themeInput')?.value;
+  const glassSel = document.getElementById('glassInput')?.value;
+  if (themeSel) Theme.set(themeSel);
+  if (glassSel) Theme.setGlass(glassSel);
   const soundOn = document.getElementById('soundInput')?.checked;
   const volumeVal = document.getElementById('volumeInput')?.value;
   const autoBuyOn = document.getElementById('autoBuyInput')?.checked;
@@ -1834,7 +2244,28 @@ socket.on('connect', () => {
     });
     toast('已重新连接，正在恢复对局…', 'success');
   }
+  demoAutoStart();
 });
+
+// ?demo=1：单人快速开局并把自己托管给 AI，全 bot 自动推进（UI 截图 / 联调用）
+// ?ui=settings|help 可在 demo 基础上直接打开对应弹窗
+function demoAutoStart() {
+  if (!/[?&]demo=1/.test(location.search) || state.demoStarted) return;
+  state.demoStarted = true;
+  localStorage.removeItem('monopoly_room');
+  setTimeout(() => soloQuickStart(), 300);
+  const ui = /[?&]ui=([a-z]+)/.exec(location.search)?.[1];
+  // QA/截图用途：界面初始化只需 ~800ms 淡出，600ms 足够让弹窗挂上
+  if (ui === 'settings') setTimeout(openSettings, 600);
+  if (ui === 'help') setTimeout(openHelp, 600);
+  const t = setInterval(() => {
+    const g = state.game;
+    if (!g || !g.started || g.ended) return;
+    const me = g.players[state.myToken];
+    if (me && !me.isBot && !me.delegated && !me.bankrupt) socket.emit('toggleDelegation');
+    clearInterval(t);
+  }, 5000);
+}
 
 socket.on('disconnect', () => {
   if (state.view === 'game') toast('⚠️ 连接断开，正在重连…', 'error');
@@ -1845,7 +2276,8 @@ socket.on('joined', ({ roomId, token, spectator }) => {
   if (spectator) toast('游戏已开始，你以观战身份进入', 'info');
   showView('game');
   socket.emit('getStats', { name: localStorage.getItem('monopoly_name') || '' });
-  if (!localStorage.getItem('monopoly_seen_help')) {
+  // demo 截图模式跳过首次帮助弹窗（弹窗会盖住对局画面）
+  if (!/[?&]demo=1/.test(location.search) && !localStorage.getItem('monopoly_seen_help')) {
     localStorage.setItem('monopoly_seen_help', '1');
     setTimeout(openHelp, 600);
   }
@@ -2086,11 +2518,13 @@ function openReplay() {
   const banner = document.createElement('div');
   banner.id = 'replayBanner';
   banner.className = 'replay-banner';
+  banner.setAttribute('role', 'region');
+  banner.setAttribute('aria-label', '对局回放控制');
   banner.innerHTML = `
     <span>🎥 对局回放 · 第 <b id="rpRound">${snaps[state.replayIdx].r}</b> 轮 / 共 ${snaps.length} 帧</span>
-    <button class="btn btn-sm btn-ghost" id="rpPrev" title="上一轮">◀</button>
-    <input type="range" id="rpSlider" min="0" max="${snaps.length - 1}" value="${state.replayIdx}" style="flex:1;" />
-    <button class="btn btn-sm btn-ghost" id="rpNext" title="下一轮">▶</button>
+    <button class="btn btn-sm btn-ghost" id="rpPrev" aria-label="上一轮" title="上一轮">◀</button>
+    <input type="range" id="rpSlider" aria-label="回放进度" min="0" max="${snaps.length - 1}" value="${state.replayIdx}" style="flex:1;" />
+    <button class="btn btn-sm btn-ghost" id="rpNext" aria-label="下一轮" title="下一轮">▶</button>
     <button class="btn btn-sm btn-secondary" id="rpExit">退出回放</button>`;
   const section = document.querySelector('.board-section');
   if (section) section.insertBefore(banner, section.firstChild);
@@ -2184,7 +2618,7 @@ function nwLegendHtml() {
   return (state.game && state.game.order || []).map(pid => {
     const p = state.game.players[pid];
     if (!p) return '';
-    return `<span class="gchip" style="background:${playerColor(pid)};color:#fff;">${escapeHtml(p.name)}${p.bankrupt ? ' 💀' : ''}</span>`;
+    return `<span class="gchip solid" style="background:${playerColor(pid)};color:${textOn(playerColor(pid))}">${escapeHtml(p.name)}${p.bankrupt ? ' 💀' : ''}</span>`;
   }).join('');
 }
 
@@ -2221,7 +2655,9 @@ function maybeShowProposal() {
          <p style="font-size:12px;color:var(--text-tertiary);margin-top:8px;">15 秒内不回应将自动取消</p>
        </div>`,
       `<button class="btn btn-primary" onclick="answerProposal(${pr.seq}, true)">✅ 卖了（+¥${pr.price.toLocaleString()}）</button>
-       <button class="btn btn-secondary" onclick="answerProposal(${pr.seq}, false)">❌ 不卖</button>`
+       <button class="btn btn-secondary" onclick="answerProposal(${pr.seq}, false)">❌ 不卖</button>`,
+      // 需应答：ESC / 遮罩不关，只能卖 / 不卖，或 15 秒后服务端自动取消
+      false
     );
     Sound.turn();
   } else if (!pr && state.proposalModalOpen) {
@@ -2260,7 +2696,9 @@ function maybeShowTrade() {
        </div>
        <p style="font-size:12px;color:var(--text-tertiary);">剩余 <b id="tradeCd">30</b> 秒，超时自动取消</p>`,
       `<button class="btn btn-primary" onclick="answerTrade(${t.seq}, true)">✅ 接受</button>
-       <button class="btn btn-secondary" onclick="answerTrade(${t.seq}, false)">❌ 拒绝</button>`
+       <button class="btn btn-secondary" onclick="answerTrade(${t.seq}, false)">❌ 拒绝</button>`,
+      // 需应答：ESC / 遮罩不关，只能接受 / 拒绝，或超时自动取消
+      false
     );
     Sound.turn();
   } else if (!t && state.tradeModalOpen) {
@@ -2310,14 +2748,19 @@ function showCardOverlay(card) {
 function renderAuction() {
   const a = state.game?.auction;
   if (!a || a.no === state.auctionHiddenNo) {
-    els.auctionPanel.classList.add('hidden');
-    state.lastTickSecond = null;
+    // 无拍卖：尽早返回，且仅在面板确实可见时做一次 DOM 写入（避免每秒空跑）
+    if (!els.auctionPanel.classList.contains('hidden')) {
+      els.auctionPanel.classList.add('hidden');
+      setAriaExpanded(els.apHideBtn, false);
+      state.lastTickSecond = null;
+    }
     return;
   }
   const cell = state.game.board[a.cellId];
-  if (!cell) { els.auctionPanel.classList.add('hidden'); return; }
+  if (!cell) { els.auctionPanel.classList.add('hidden'); setAriaExpanded(els.apHideBtn, false); return; }
 
   els.auctionPanel.classList.remove('hidden');
+  setAriaExpanded(els.apHideBtn, true);
   els.apName.textContent = `${cell.name}（原价 ¥${cell.price.toLocaleString()}）`;
   els.apTopBid.textContent = '¥' + a.topBid.toLocaleString();
   if (a.topBidder) {

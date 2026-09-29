@@ -196,5 +196,122 @@ const gameOnly = logBox.querySelectorAll('.log-entry');
 check('切到「游戏」过滤只留 2 条', gameOnly.length === 2, `实际 ${gameOnly.length}`);
 check('过滤后均为 game 类型', Array.from(gameOnly).every(e => e.classList.contains('game')));
 
+// ════════ v2.34 前端 UI 回归：音量 / 回放 / 掷骰直方图 ════════
+
+// ── 12. 音量滑块（Sound.volume ↔ localStorage 'monopoly_volume'）──
+// app.js:93 Sound.volume = Number(localStorage.getItem('monopoly_volume') || 70)
+// app.js:1811 设置面板渲染 <input type=range id=volumeInput min=0 max=100 value=Sound.volume>
+// app.js:1832-1839 saveSettings() 回写 Sound.volume + localStorage
+console.log('\n=== 12. 音量滑块：默认值 + 修改后可持久化 ===');
+win.localStorage.removeItem('monopoly_volume');
+const gs = makeGame();
+gs.hostToken = 'p1'; gs.started = false;
+setGame(gs);
+win.openSettings();
+const volEl = win.document.getElementById('volumeInput');
+check('设置面板渲染音量滑块(min0/max100)', !!volEl && volEl.min === '0' && volEl.max === '100');
+check('音量滑块默认值为 70', !!volEl && volEl.value === '70', `实际 ${volEl && volEl.value}`);
+check('音量百分比文案随默认值显示 70%', win.document.getElementById('modalRoot').textContent.includes('70%'));
+// 改值并保存 → 落 localStorage
+volEl.value = '35';
+win.saveSettings();
+check('保存后音量写入 localStorage(35)', win.localStorage.getItem('monopoly_volume') === '35', `实际 ${win.localStorage.getItem('monopoly_volume')}`);
+// 重新打开设置 → 滑块回填新值
+win.openSettings();
+const volEl2 = win.document.getElementById('volumeInput');
+check('重开设置面板滑块回填为 35', !!volEl2 && volEl2.value === '35', `实际 ${volEl2 && volEl2.value}`);
+check('重开音量百分比文案为 35%', win.document.getElementById('modalRoot').textContent.includes('35%'));
+win.localStorage.removeItem('monopoly_volume'); // 还原，避免污染其它用例
+win.hideModal();
+
+// ── 13. 回放模式 UI（入口按钮显隐 + 回放控制区渲染/移除）──
+// app.js:2160 els.replayBtn 仅在 started && replay.length>=2 时显示
+// app.js:2193-2221 openReplay() 渲染 #replayBanner（滑杆/上一帧/下一帧/退出）
+console.log('\n=== 13. 回放模式 UI：入口显隐 + 控制区渲染 ===');
+const replayBtn = win.document.getElementById('replayBtn');
+check('回放入口按钮存在于头部', !!replayBtn);
+// 场景A：回放帧 < 2 → 入口隐藏，openReplay 不生成控制区
+const gR0 = makeGame();
+gR0.replay = [{ r: 1, c: [], p: {} }];
+setGame(gR0);
+win.eval('state.replayIdx = null;');
+win.render();
+check('回放帧<2 时入口按钮隐藏', replayBtn.style.display === 'none', `实际 ${replayBtn.style.display}`);
+win.openReplay();
+check('回放帧<2 时不渲染回放控制区', !win.document.getElementById('replayBanner'));
+// 场景B：回放帧 >= 2 → 入口显示，openReplay 生成完整控制区
+const snapC = Array.from({ length: 40 }, () => [0, 0, 0]);
+const gR1 = makeGame();
+gR1.replay = [
+  { r: 1, c: snapC, p: { p1: [0, 9000, 0] } },
+  { r: 2, c: snapC, p: { p1: [0, 9000, 0] } },
+];
+setGame(gR1);
+win.eval('state.replayIdx = null;');
+win.render();
+check('回放帧≥2 时入口按钮显示', replayBtn.style.display === '', `实际 ${replayBtn.style.display}`);
+win.openReplay();
+const rb = win.document.getElementById('replayBanner');
+check('回放控制区(#replayBanner)已渲染', !!rb);
+check('控制区含滑杆/上一帧/下一帧/退出', !!win.document.getElementById('rpSlider') && !!win.document.getElementById('rpPrev') && !!win.document.getElementById('rpNext') && !!win.document.getElementById('rpExit'));
+check('进入回放后 state.replayIdx 指向末帧', win.eval('state.replayIdx') === 1, `实际 ${win.eval('state.replayIdx')}`);
+check('回放中央面板标注「回放中」', rb && win.document.querySelector('.board-center').textContent.includes('回放中'));
+win.exitReplay();
+check('退出回放后控制区移除', !win.document.getElementById('replayBanner'));
+check('退出回放后 replayIdx 复位为 null', win.eval('state.replayIdx') === null);
+
+// ── 14. 掷骰分布直方图（结算面板内的柱状文本）──
+// app.js:1383-1386 diceHtml：diceHistory 存在正数时以 ▉ 字符渲染 2~12 点分布
+console.log('\n=== 14. 掷骰分布直方图（结算面板）===');
+// 场景A：diceHistory 全 0 → 不渲染直方图
+const gH0 = makeGame();
+gH0.diceHistory = Array(13).fill(0);
+setGame(gH0);
+win.showVictoryStats('p1');
+const histText0 = win.document.getElementById('modalRoot').textContent;
+check('无掷骰数据时不渲染直方图', !histText0.includes('掷骰分布'));
+win.hideModal();
+// 场景B：diceHistory 有数据 → 渲染直方图与柱体
+const gH1 = makeGame();
+gH1.diceHistory = Array(13).fill(0);
+gH1.diceHistory[7] = 5;  // 掷出 7 点 5 次
+gH1.diceHistory[2] = 1;
+setGame(gH1);
+win.showVictoryStats('p1');
+const histText1 = win.document.getElementById('modalRoot').textContent;
+check('有掷骰数据时渲染「掷骰分布」', histText1.includes('掷骰分布'), histText1.slice(0, 60));
+check('直方图含柱体字符 ▉', histText1.includes('▉'));
+check('直方图列出 2~12 共 11 个点数桶', (histText1.match(/\d+点/g) || []).length === 11, `实际 ${(histText1.match(/\d+点/g) || []).length}`);
+win.hideModal();
+
+// ── 15. 无障碍结构回归（第三轮 a11y 成果固化，防无声回退）──
+console.log('\n=== 15. 无障碍结构（skip link / aria-live / dialog / 图标按钮）===');
+const D = win.document;
+const skip = D.querySelector('a.skip-link');
+check('存在 skip link 且指向 #mainContent', !!skip && skip.getAttribute('href') === '#mainContent');
+const main = D.getElementById('mainContent');
+check('主内容区 #mainContent 存在且 tabindex=-1（可接收焦点）', !!main && main.getAttribute('tabindex') === '-1');
+['turnBanner', 'moneyFloatLayer', 'actionHint'].forEach(id => {
+  const el = D.getElementById(id);
+  check(`#${id} 带 aria-live=polite`, !!el && el.getAttribute('aria-live') === 'polite');
+});
+const logEl = D.getElementById('log');
+check('#log 带 role=log + aria-live', !!logEl && logEl.getAttribute('role') === 'log' && logEl.getAttribute('aria-live') === 'polite');
+['themeBtn', 'helpBtn', 'settingsBtn', 'zoomIn', 'zoomOut', 'zoomReset', 'themeBtnLobby', 'helpBtnLobby'].forEach(id => {
+  const el = D.getElementById(id);
+  check(`图标按钮 #${id} 有非空 aria-label`, !!el && (el.getAttribute('aria-label') || '').length > 0);
+});
+// 动态弹窗：role=dialog + aria-modal + aria-labelledby 指向存在的元素
+setGame(gH1);
+win.showVictoryStats('p1');
+const dlg = D.querySelector('#modalRoot [role="dialog"]');
+check('弹窗含 role=dialog 容器', !!dlg);
+check('aria-modal=true 且 tabindex=-1', !!dlg && dlg.getAttribute('aria-modal') === 'true' && dlg.getAttribute('tabindex') === '-1');
+const lbId = dlg && dlg.getAttribute('aria-labelledby');
+check('aria-labelledby 指向真实存在的标题元素', !!lbId && !!D.getElementById(lbId));
+check('弹窗打开时 modalRoot 内有 .modal-content', !!D.querySelector('#modalRoot .modal-content'));
+win.hideModal();
+check('弹窗关闭后 modalRoot 清空（无泄漏）', (D.getElementById('modalRoot').innerHTML || '').trim() === '');
+
 console.log(`\n结果: ${passed} 通过, ${failed} 失败`);
 process.exit(failed ? 1 : 0);

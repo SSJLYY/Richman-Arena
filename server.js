@@ -12,6 +12,7 @@
      host-only start/reset, min auction bid step, bot bail -> jackpot
    ============================================================ */
 const express = require('express');
+const compression = require('compression');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
@@ -22,6 +23,16 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 const PORT = process.env.PORT || 8081;
 
+// 基础安全响应头（CSP 因大量内联样式/脚本暂不启用）
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  next();
+});
+
+// 文本资源 gzip（css/js/html 约 130KB+，压缩后 ~75% 缩减）
+app.use(compression({ threshold: 1024 }));
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: true,
   lastModified: true,
@@ -30,6 +41,14 @@ app.use(express.static(path.join(__dirname, 'public'), {
     res.setHeader('Cache-Control', 'no-cache, must-revalidate');
   },
 }));
+
+// 前端版本角标数据源（package.json 不在 public/ 下，不能直接静态访问）
+app.get('/version', (req, res) => {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+    res.json({ version: pkg.version });
+  } catch { res.json({ version: '0.0.0' }); }
+});
 
 // ============================================================
 // GAME CONSTANTS & DATA
@@ -206,11 +225,11 @@ const rooms = {};
 const socketToken = {}; // socket.id -> player token
 
 function createRoom(id, mapId = 'classic') {
-  return {
+  const room = {
     id,
     mapId: MAPS[mapId] ? mapId : 'classic',
     hostToken: null,
-    players: {},          // token -> player
+    players: Object.create(null), // token -> player（null 原型，防 '__proto__' 原型污染）
     order: [],            // [token]
     turnIndex: 0,
     started: false,
@@ -253,7 +272,9 @@ function createRoom(id, mapId = 'classic') {
     chestIdx: 0,
     lastActive: Date.now(),
     botTimers: [],
+    disconnectTimers: [], // 掉线接管等"一次性长时等待"计时器，随房间清理一并取消
   };
+  return room;
 }
 
 function createPlayer(name, token, { isBot = false, avatar } = {}) {
@@ -281,6 +302,12 @@ function log(room, msg) {
   room.logs.push({ text: msg, ts: Date.now() });
   if (room.logs.length > 100) room.logs.shift();
   room.lastActive = Date.now();
+}
+
+// 统一聊天入口：所有来源（玩家/系统/机器人）都受 150 条上限保护
+function pushChat(room, from, text) {
+  room.chats.push({ from, text, ts: Date.now() });
+  if (room.chats.length > 150) room.chats.shift();
 }
 
 // 建筑拆回银行（level 归零）
@@ -390,10 +417,7 @@ function concludeGame(room, alive, winnerId, reasonText) {
     players: room.order.map(id => { const p = room.players[id]; return p ? p.name : '?'; }),
   });
   if (recentGames.length > 20) recentGames = recentGames.slice(-20);
-  try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(HISTORY_FILE, JSON.stringify(recentGames));
-  } catch (e) {}
+  atomicWriteJson(HISTORY_FILE, recentGames);
   clearBotTimers(room);
   io.emit('roomList', roomList());
 }
@@ -550,12 +574,15 @@ function allowRate(socket, key, max, windowMs) {
 function nextTurn(room) {
   room.doubleCount = 0;
   room.currentRolled = false;
+  const prevIndex = room.turnIndex;
   let tries = 0;
   do {
     room.turnIndex = (room.turnIndex + 1) % room.order.length;
     tries++;
   } while (room.players[room.order[room.turnIndex]]?.bankrupt && tries < room.order.length * 2);
-  if (room.turnIndex === 0) {
+  // 回绕检测：不能用「回到 0 号位」判定新一轮——若 0 号玩家破产会被永久跳过，
+  // 导致设了 maxRounds 的局永不结算。新指针 <= 旧指针即说明已绕过末尾一整轮。
+  if (room.turnIndex <= prevIndex) {
     room.roundCount++;
     // 每轮净资产快照
     const snap = { r: room.roundCount - 1, v: {} };
@@ -671,6 +698,12 @@ function charge(room, player, amount, reason, creditorId = null) {
     return true;
   }
   // 无力支付 → 进入 30 秒筹钱期（紧急卖楼/抵押），到期未筹齐才破产
+  openDebtPeriod(room, player, amount, reason, creditorId);
+  return false;
+}
+
+// 创建筹钱期（charge 与卡面费用共用出口）
+function openDebtPeriod(room, player, amount, reason, creditorId = null) {
   const label = reason === 'rent' ? '租金' : reason === 'tax' ? '税款' : '费用';
   const seq = (room.debtSeq = (room.debtSeq || 0) + 1);
   room.debt = {
@@ -683,7 +716,15 @@ function charge(room, player, amount, reason, creditorId = null) {
   botAddTimer(room, () => {
     if (room.debt && room.debt.seq === seq) botSettleDebt(room);
   }, DEBT_MS + 100);
-  return false;
+}
+
+// 卡面直接扣款后的余额兜底：现金一次扣光，缺口转入筹钱期（与租金/税同一自救通道，不再直接判破产）
+function settleCardShortfall(room, player) {
+  if (player.money >= 0) return;
+  const shortfall = -player.money;
+  player.money = 0;
+  if (room.debt) { handleBankruptcy(room, player); return; } // 理论上不会发生：已有欠款时不再叠加
+  openDebtPeriod(room, player, shortfall, 'fee', null);
 }
 
 // 欠款可付则立即结算（税款入奖池）
@@ -830,7 +871,7 @@ function landOn(room, player, dice, opts = {}) {
       if (ret.teleport) {
         landOn(room, player, dice, ret);
       }
-      if (player.money < 0) handleBankruptcy(room, player);
+      settleCardShortfall(room, player);
       break;
     }
 
@@ -840,7 +881,7 @@ function landOn(room, player, dice, opts = {}) {
       log(room, `📦 ${player.name} 抽到基金：${card.text}`);
       room.lastCard = { type: 'chest', text: card.text, by: player.name, ts: Date.now() };
       card.action(player, room);
-      if (player.money < 0) handleBankruptcy(room, player);
+      settleCardShortfall(room, player);
       break;
     }
 
@@ -1101,7 +1142,9 @@ function placeBid(room, player, amount) {
 
 function resolveAuction(room) {
   const a = room.auction;
-  if (!a) return;
+  // 自愈守卫：拍卖尚未到结算时间（例如顺延后旧定时器早触发）就直接返回，
+  // 避免提前成交。a.endsAt 缺失（极端损坏）时放行，保留既有提前结算路径。
+  if (!a || (a.endsAt && Date.now() < a.endsAt)) return;
   room.auction = null;
   const cell = room.board[a.cellId];
   const winner = a.topBidder ? room.players[a.topBidder] : null;
@@ -1159,10 +1202,24 @@ function backupData() {
 }
 const ROOMS_FILE = path.join(DATA_DIR, 'rooms.json');
 let saveTimer = null;
+
+// 原子写入 JSON：先写临时文件再 rename，避免写一半崩溃留下损坏的主文件。
+function atomicWriteJson(file, data) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    const tmp = file + '.tmp';
+    fs.writeFileSync(tmp, typeof data === 'string' ? data : JSON.stringify(data));
+    fs.renameSync(tmp, file); // Windows 上 rename 覆盖已存在文件是允许的
+  } catch (e) {
+    // 写失败不静默：至少留一条错误日志便于排查（不抛异常，避免中断主流程）
+    console.error('[atomicWriteJson] 写入失败:', file, e && e.message);
+  }
+}
+
 function saveRoomsNow() {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    const out = {};
+    const out = { schemaVersion: 3 };
     Object.values(rooms).forEach(r => {
       out[r.id] = {
         id: r.id, hostToken: r.hostToken, players: r.players, order: r.order,
@@ -1170,6 +1227,8 @@ function saveRoomsNow() {
         board: r.board, dice: r.dice, currentRolled: r.currentRolled,
         roundCount: r.roundCount, turnStartedAt: r.turnStartedAt,
         jackpot: r.jackpot, maxRounds: r.maxRounds || 0, winnerToken: r.winnerToken || null,
+        // 房间口令必须随局持久化，否则服务器重启后带锁房间会对所有人敞开
+        password: r.password || null,
         settings: r.settings, nwHistory: r.nwHistory.slice(-100), bank: r.bank, maxRent: r.maxRent || null, mapId: r.mapId || 'classic', landingStats: r.landingStats || {}, startedAt: r.startedAt || null, diceHistory: r.diceHistory || [], rentMul: r.rentMul || 1, houseMul: r.houseMul || 1, replay: r.replay || [],
         logs: r.logs.slice(-60), chats: r.chats.slice(-60),
         chanceOrder: r.chanceDeck.map(c => CHANCE_CARDS.indexOf(c)),
@@ -1177,33 +1236,65 @@ function saveRoomsNow() {
         chanceIdx: r.chanceIdx, chestIdx: r.chestIdx,
       };
     });
-    fs.writeFileSync(ROOMS_FILE, JSON.stringify(out));
-  } catch (e) {}
+    atomicWriteJson(ROOMS_FILE, out);
+  } catch (e) { console.error('[saveRoomsNow] 失败:', e && e.message); }
 }
 function queueSave() {
   if (saveTimer) return;
   saveTimer = setTimeout(() => { saveTimer = null; saveRoomsNow(); }, 2000);
 }
-function loadRooms() {
+function readLatestRoomsBackup() {
+  // 主文件解析失败时，读取 data/backup 下最新的一份 rooms.json（命名形如 2026-09-24-rooms.json）
+  let best = null;
   try {
-    const raw = JSON.parse(fs.readFileSync(ROOMS_FILE, 'utf8'));
-    Object.values(raw).forEach(s => {
-      if (!s || !s.id || !Array.isArray(s.order)) return;
+    const files = fs.readdirSync(BACKUP_DIR)
+      .filter(f => /rooms\.json$/.test(f))
+      .map(f => ({ f, t: fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs }))
+      .sort((a, b) => b.t - a.t);
+    if (files.length) best = JSON.parse(fs.readFileSync(path.join(BACKUP_DIR, files[0].f), 'utf8'));
+  } catch (e) { best = null; }
+  return best;
+}
+
+// loadRooms：读主文件失败则回退备份；每个房间单独 try/catch，坏房间不拖垮全局；
+// 宽容读取（缺省字段当旧版，用默认值兜底），不拒绝旧数据。
+function loadRooms() {
+  let raw = null;
+  try {
+    raw = JSON.parse(fs.readFileSync(ROOMS_FILE, 'utf8'));
+  } catch (e) {
+    console.error('[loadRooms] rooms.json 解析失败，尝试从备份恢复:', e && e.message);
+    raw = readLatestRoomsBackup();
+    if (raw) console.log('[loadRooms] 已从备份恢复房间数据');
+  }
+  if (!raw || typeof raw !== 'object') {
+    console.error('[loadRooms] 无可用房间数据');
+    return;
+  }
+  let loaded = 0;
+  Object.values(raw).forEach(s => {
+    // 每个房间独立 try/catch：一个脏房间的异常不再中断全部恢复
+    try {
+      if (!s || typeof s !== 'object' || !s.id || !Array.isArray(s.order)) return;
       const room = createRoom(s.id);
       room.hostToken = s.hostToken || null;
-      room.players = s.players || {};
-      room.order = s.order;
-      room.turnIndex = s.turnIndex || 0;
+      // 重建为 null 原型容器，载入后依旧防 '__proto__' 原型污染
+      room.players = Object.create(null);
+      if (s.players && typeof s.players === 'object') Object.assign(room.players, s.players);
+      room.order = Array.isArray(s.order) ? s.order : [];
+      room.turnIndex = Number(s.turnIndex) || 0;
       room.started = !!s.started;
       room.ended = !!s.ended;
       room.board = Array.isArray(s.board) ? s.board : room.board;
       room.dice = s.dice || null;
       room.currentRolled = !!s.currentRolled;
-      room.roundCount = s.roundCount || 1;
+      room.roundCount = Number(s.roundCount) || 1;
       room.turnStartedAt = s.turnStartedAt || Date.now();
       room.jackpot = s.jackpot || 0;
       room.maxRounds = s.maxRounds || 0;
       room.winnerToken = s.winnerToken || null;
+      // 宽容读取：旧数据无 password 字段视为无口令房间
+      room.password = typeof s.password === 'string' ? s.password : null;
       if (s.settings && typeof s.settings === 'object') room.settings = { ...room.settings, ...s.settings };
       if (s.bank && typeof s.bank === 'object') room.bank = { houses: s.bank.houses ?? 32, hotels: s.bank.hotels ?? 12 };
       room.mapId = MAPS[s.mapId] ? s.mapId : 'classic';
@@ -1227,22 +1318,27 @@ function loadRooms() {
       Object.values(room.players).forEach(p => { if (p && !p.isBot) p.connected = false; });
       rooms[room.id] = room;
       if (room.started && !room.ended) scheduleAIIfAny(room, 5000);
-    });
-    if (Object.keys(raw || {}).length) console.log(`[load] 恢复 ${Object.keys(raw).length} 个房间`);
-  } catch (e) {}
+      loaded++;
+    } catch (e) {
+      console.error(`[loadRooms] 房间 ${s && s.id || '?'} 恢复失败，已跳过:`, e && e.message);
+    }
+  });
+  if (loaded) console.log(`[load] 恢复 ${loaded} 个房间`);
+  else console.log('[load] 没有可恢复的房间');
 }
 const STATS_FILE = path.join(DATA_DIR, 'stats.json');
-let stats = {};
+// stats 用 null 原型：昵称可能是 __proto__/constructor 等，普通对象上
+// stats[nick] = {...} 会触发原型 setter 造成 Object.prototype 污染
+let stats = Object.create(null);
 const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
 let recentGames = [];
 try { recentGames = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')); } catch (e) { recentGames = []; }
-try { stats = JSON.parse(fs.readFileSync(STATS_FILE, 'utf8')); } catch (e) { stats = {}; }
+try { stats = Object.assign(Object.create(null), JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'))); } catch (e) { stats = Object.create(null); }
 function saveStats() {
   try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(STATS_FILE, JSON.stringify(stats));
-    fs.writeFileSync(HISTORY_FILE, JSON.stringify(recentGames));
-  } catch (e) {}
+    atomicWriteJson(STATS_FILE, stats);
+    atomicWriteJson(HISTORY_FILE, recentGames);
+  } catch (e) { console.error('[saveStats] 失败:', e && e.message); }
 }
 function topStats(n = 10) {
   return Object.entries(stats)
@@ -1267,6 +1363,8 @@ function botAddTimer(room, fn, delay) {
 function clearBotTimers(room) {
   room.botTimers.forEach(clearTimeout);
   room.botTimers = [];
+  (room.disconnectTimers || []).forEach(clearTimeout);
+  room.disconnectTimers = [];
 }
 
 function botTryBuy(room, bot) {
@@ -1338,8 +1436,7 @@ function botSay(room, bot, type, chance = 0.35) {
   const lines = BOT_LINES[type];
   if (!lines || !bot || !bot.isBot || bot.bankrupt) return;
   if (Math.random() > chance) return;
-  room.chats.push({ from: bot.name, text: lines[Math.floor(Math.random() * lines.length)], ts: Date.now() });
-  if (room.chats.length > 150) room.chats.shift();
+  pushChat(room, bot.name, lines[Math.floor(Math.random() * lines.length)]);
 }
 
 // ── 机器人赎回抵押地产（简单难度不赎回）──
@@ -1455,7 +1552,7 @@ function takeOverByBot(room, player, reason = '退出') {
   player.avatar = '🤖';
   player.name = (player.origName + 'bot').slice(0, 16);
   log(room, `🤖 ${player.origName} ${reason}，机器人接管其席位与资产`);
-  room.chats.push({ from: '系统', text: `🤖 机器人接管了 ${player.origName} 的席位`, ts: Date.now() });
+  pushChat(room, '系统', `🤖 机器人接管了 ${player.origName} 的席位`);
 }
 
 // ── AI 调度：机器人 或 托管中的真人，轮到谁就替谁行动 ──
@@ -1515,7 +1612,7 @@ function addBot(room, difficulty) {
   room.players[token] = createPlayer(name, token, { isBot: true, avatar: '🤖' });
   room.players[token].botLevel = level;
   room.order.push(token);
-  room.chats.push({ from: '系统', text: `${name}${BOT_LEVEL_TAG[level]} 加入了房间`, ts: Date.now() });
+  pushChat(room, '系统', `${name}${BOT_LEVEL_TAG[level]} 加入了房间`);
   log(room, `🤖 ${name}${BOT_LEVEL_TAG[level]} 加入了房间`);
   return true;
 }
@@ -1536,7 +1633,10 @@ io.on('connection', (socket) => {
       return safeEmit('msg', '服务器房间数已达上限，请稍后再试');
     }
     name = String(name).slice(0, 16).trim() || ('玩家' + Math.floor(Math.random() * 1000));
-    if (!token || typeof token !== 'string' || token.length < 6 || token.startsWith('bot_')) {
+    // token 白名单校验：仅允许安全字符，杜绝把含引号/尖括号的 token 下发给前端
+    // 拼接进 onclick 等属性（防存储型 XSS）。不符合则替换为随机安全 token。
+    const tokenRe = /^[A-Za-z0-9_\-]{6,64}$/;
+    if (!token || typeof token !== 'string' || !tokenRe.test(token) || token.startsWith('bot_')) {
       token = 'u' + Math.random().toString(36).slice(2, 12);
     }
     // Switching rooms: fully leave the previous one first
@@ -1571,7 +1671,7 @@ io.on('connection', (socket) => {
         player.origName = null;
         player.origAvatar = null;
         log(room, `🎮 ${player.name} 回来了，收回被机器人代打的席位`);
-        room.chats.push({ from: '系统', text: `🎮 ${player.name} 收回了控制权`, ts: Date.now() });
+        pushChat(room, '系统', `🎮 ${player.name} 收回了控制权`);
       } else {
         if (player.delegated) {
           player.delegated = false;
@@ -1601,7 +1701,7 @@ io.on('connection', (socket) => {
     room.players[token] = player;
     if (!room.hostToken) room.hostToken = token;
     room.order.push(token);
-    room.chats.push({ from: '系统', text: `${name} 加入了房间`, ts: Date.now() });
+    pushChat(room, '系统', `${name} 加入了房间`);
     log(room, `${name} 加入了房间`);
     safeEmit('joined', { roomId, token });
     broadcast(roomId);
@@ -1669,7 +1769,7 @@ io.on('connection', (socket) => {
     });
     room.turnStartedAt = Date.now();
     log(room, '🎲 游戏开始！');
-    room.chats.push({ from: '系统', text: '游戏开始！', ts: Date.now() });
+    pushChat(room, '系统', '游戏开始！');
     broadcast(room.id);
     scheduleAIIfAny(room, 1200);
   });
@@ -1808,6 +1908,12 @@ io.on('connection', (socket) => {
     if (!room || !room.started || room.ended) return;
     const token = socketToken[socket.id];
     const from = room.players[token];
+    // 防原型污染：targetId 必须是本房间合法玩家。人类 token 要求在 order 中；
+    // bot token 由服务端生成（bot_ 前缀，客户端无法伪造），存在于 players 即可
+    // （测试注入的侧车 bot 故意不进 order，保证回合确定性）。
+    if (!Array.isArray(room.order) || targetId === '__proto__' || targetId === 'constructor') return;
+    const tgt = String(targetId);
+    if (!room.order.includes(tgt) && !(tgt.startsWith('bot_') && room.players[tgt])) return;
     const to = room.players[targetId];
     if (!from || !to || from.bankrupt || to.bankrupt || from.delegated) return;
     giveMoney = Math.max(0, Math.floor(giveMoney || 0));
@@ -2112,8 +2218,7 @@ io.on('connection', (socket) => {
     if (!room || !text || typeof text !== 'string' || text.length > 300) return;
     const token = socketToken[socket.id];
     const name = room.players[token]?.name || socket.playerName || '观众';
-    room.chats.push({ from: name, text: text.trim(), ts: Date.now() });
-    if (room.chats.length > 150) room.chats.shift();
+    pushChat(room, name, text.trim());
     broadcast(room.id);
   });
 
@@ -2138,7 +2243,7 @@ io.on('connection', (socket) => {
     });
     newRoom.hostToken = room.hostToken && newRoom.players[room.hostToken] ? room.hostToken : newRoom.order[0] || null;
     log(newRoom, '🔄 房间已重置，开始新一局！');
-    newRoom.chats.push({ from: '系统', text: '房间已重置，准备开始新一局！', ts: Date.now() });
+    pushChat(newRoom, '系统', '房间已重置，准备开始新一局！');
     broadcast(roomId);
     io.emit('roomList', roomList());
   });
@@ -2168,7 +2273,7 @@ function leaveRoom(socket, reason, graceful = false) {
   if (!room.started) {
     // lobby: remove completely
     log(room, `👋 ${player.name} ${reason}`);
-    room.chats.push({ from: '系统', text: `${player.name} ${reason}`, ts: Date.now() });
+    pushChat(room, '系统', `${player.name} ${reason}`);
     delete room.players[token];
     room.order = room.order.filter(t => t !== token);
     if (room.hostToken === token) {
@@ -2180,12 +2285,14 @@ function leaveRoom(socket, reason, graceful = false) {
     player.disconnAt = Date.now();
     player.delegated = true;
     log(room, `⚠️ ${player.name} ${reason}，已自动托管（重连即恢复手动）`);
-    room.chats.push({ from: '系统', text: `⚠️ ${player.name} 掉线，AI 暂时代打`, ts: Date.now() });
+    pushChat(room, '系统', `⚠️ ${player.name} 掉线，AI 暂时代打`);
     // 若正好轮到该玩家，让 AI 立刻接手
     if (!room.diceAnim && currentPlayer(room)?.id === token) scheduleAIIfAny(room, 800);
-    setTimeout(() => {
+    const waitTimer = setTimeout(() => {
       const r = rooms[roomId];
       if (!r || r !== room) return;
+      // 从可清理结构中移除自身（此时房间仍在），避免重复登记
+      room.disconnectTimers = (room.disconnectTimers || []).filter(x => x !== waitTimer);
       const p = r.players[token];
       if (p && !p.connected && !p.bankrupt && !p.isBot) {
         takeOverByBot(r, p, '长时间掉线');
@@ -2194,6 +2301,7 @@ function leaveRoom(socket, reason, graceful = false) {
         io.emit('roomList', roomList());
       }
     }, 5 * 60 * 1000);
+    (room.disconnectTimers || (room.disconnectTimers = [])).push(waitTimer);
   } else {
     // 主动退出：机器人立即接管席位与资产（重进房间可收回）
     player.connected = false;
@@ -2250,7 +2358,24 @@ app.get('/stats', (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', uptime: process.uptime(), rooms: Object.keys(rooms).length, ts: Date.now() });
+  const mem = process.memoryUsage();
+  let players = 0;
+  let roomsPlaying = 0;
+  Object.values(rooms).forEach(r => {
+    r.order.forEach(t => { if (r.players[t]) players++; });
+    if (r.started && !r.ended) roomsPlaying++;
+  });
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    rooms: Object.keys(rooms).length,
+    ts: Date.now(),
+    players,
+    connections: io.engine.clientsCount,
+    memMB: Math.round(mem.rss / 1048576),
+    heapMB: Math.round(mem.heapUsed / 1048576),
+    roomsPlaying,
+  });
 });
 
 setInterval(() => {
@@ -2296,5 +2421,5 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 server.listen(PORT, () => {
-   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v2.34 服务器已启动 → http://0.0.0.0:${PORT}`);
+   console.log(`[${new Date().toLocaleString()}] 🎲 大富翁在线 v${require('./package.json').version} 服务器已启动 → http://0.0.0.0:${PORT}`);
 });

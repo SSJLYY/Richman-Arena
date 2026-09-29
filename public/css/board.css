@@ -1,0 +1,764 @@
+/* board.css — 玻璃托盘外围 + 浅色经典印刷棋盘 + 棋子/骰子/卡片/拍卖等棋盘内浮层 */
+
+/* ============================================================
+   1. 外围玻璃托盘
+   ------------------------------------------------------------
+   z-index 地图（.board-section 内部）：
+   反射层 1 < 回合条/棋盘容器 2 < 缩放控件 9 < 拍卖 22 < 骰子 26
+   < 飘字 28 < 卡片遮罩 30
+   棋盘内部：格子 1 < 色条 2 < 徽标 3 < hover 5 < 棋子层 6 < 中央面板 8
+   ============================================================ */
+.board-section {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 500px;
+  padding: var(--space-5) var(--space-5) 56px;
+  background: var(--glass-1);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    var(--shadow-xl),
+    inset 0 1px 0 var(--glass-edge-top),
+    inset 0 -1px 0 var(--glass-stroke-soft);
+  backdrop-filter: blur(var(--blur-card)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--blur-card)) saturate(150%);
+}
+/* 斜向镜面反射：必须在所有可交互层之下 */
+.board-section::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: var(--glass-spec);
+  pointer-events: none;
+}
+
+.board-container {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 700px;
+}
+.board-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 580px;
+  transform-origin: center;
+  transition: transform var(--transition-normal);
+}
+
+/* ============================================================
+   2. 棋盘本体：摆在玻璃桌面上的实体纸板（主题无关）
+   ============================================================ */
+.board {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(11, 1fr);
+  grid-template-rows: repeat(11, 1fr);
+  gap: 2px;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  padding: 3px;
+  background: var(--board-lawn);
+  border: 10px solid var(--board-frame);
+  border-radius: var(--radius-sm);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.32),
+    inset 0 0 16px rgba(0, 0, 0, 0.3),
+    0 0 0 1px color-mix(in srgb, var(--board-ink) 30%, transparent),
+    var(--shadow-xl);
+}
+
+/* ============================================================
+   3. 格子：白底 + 深色油墨字 + 纸边内阴影
+   ============================================================ */
+.cell {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 4px 3px;
+  background: var(--board-face);
+  border-radius: var(--radius-xs);
+  color: var(--board-ink);
+  font-size: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  overflow: hidden;
+  transition: background var(--transition-fast), outline-color var(--transition-fast);
+}
+/* 纸板厚度用伪元素承担，避免与闪光动画争用 box-shadow */
+.cell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 0 0 1px color-mix(in srgb, var(--board-ink) 9%, transparent),
+    inset 0 -7px 10px color-mix(in srgb, var(--board-ink) 6%, transparent);
+}
+.cell:hover {
+  z-index: 5;
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--accent-primary) 7%, var(--board-face));
+}
+.cell.corner { background: var(--board-face-corner); }
+
+/* 经典印刷底色（棋盘不参与换肤，跟随主题的反色在此无意义） */
+.cell.go { background: color-mix(in srgb, var(--accent-success) 11%, var(--board-face)); }
+.cell.jail,
+.cell.gotojail { background: color-mix(in srgb, var(--board-ink) 6%, var(--board-face)); }
+.cell.parking { background: var(--board-face-corner); }
+.cell.railroad { background: color-mix(in srgb, var(--accent-warning) 13%, var(--board-face)); }
+.cell.utility { background: color-mix(in srgb, var(--accent-info) 11%, var(--board-face)); }
+.cell.casino { background: color-mix(in srgb, var(--accent-primary) 10%, var(--board-face)); }
+.cell.casino .cell-icon { font-size: 13px; }
+
+/* ---------- 文字与徽标 ---------- */
+.cell .cell-name {
+  position: relative;
+  z-index: 3;
+  font-weight: 700;
+  font-size: 10px;
+  text-align: center;
+  margin: 2px 0;
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+  min-width: 0;
+  max-width: 100%;
+}
+.cell .cell-price {
+  position: relative;
+  z-index: 3;
+  font-size: 9px;
+  color: var(--board-ink-soft);
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.cell .cell-icon {
+  position: relative;
+  z-index: 3;
+  font-size: 14px;
+  text-align: center;
+  margin-top: 2px;
+}
+/* 显隐由 JS 行内 display 控制：此处不得声明 display */
+.cell .house-badge {
+  position: relative;
+  z-index: 3;
+  font-size: 9px;
+  text-align: center;
+  line-height: 1.1;
+  letter-spacing: -1px;
+}
+.cell .owner-dot {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  z-index: 4;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid var(--board-face);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--board-ink) 25%, transparent);
+}
+.cell .rent-badge {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  z-index: 4;
+  background: var(--board-chip);
+  color: #ffd54f;
+  border-radius: var(--radius-xs);
+  padding: 0 3px;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.cell.mortgaged {
+  background: color-mix(in srgb, var(--board-ink) 6%, var(--board-face));
+  color: var(--board-ink-soft);
+}
+.cell.mortgaged::after {
+  content: '抵';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 4;
+  transform: translate(-50%, -50%) rotate(-18deg);
+  font-size: 15px;
+  font-weight: 900;
+  color: rgba(233, 30, 99, 0.72);
+  pointer-events: none;
+}
+
+/* ============================================================
+   4. 地产色条：油墨印刷感（底色由 JS 行内写入，渐变走 ::after）
+   ============================================================ */
+.color-strip {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+}
+.color-strip::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 42%, rgba(0, 0, 0, 0.24));
+}
+.color-strip.strip-top { top: 0; left: 0; right: 0; height: 7px; border-radius: var(--radius-xs) var(--radius-xs) 3px 3px; }
+.color-strip.strip-bottom { bottom: 0; left: 0; right: 0; height: 7px; border-radius: 3px 3px var(--radius-xs) var(--radius-xs); }
+.color-strip.strip-left { left: 0; top: 0; bottom: 0; width: 7px; border-radius: var(--radius-xs) 3px 3px var(--radius-xs); }
+.color-strip.strip-right { right: 0; top: 0; bottom: 0; width: 7px; border-radius: 3px var(--radius-xs) var(--radius-xs); }
+
+.cell:has(> .strip-top) { padding-top: 11px; }
+.cell:has(> .strip-bottom) { padding-bottom: 11px; }
+.cell:has(> .strip-left) { padding-left: 11px; }
+.cell:has(> .strip-right) { padding-right: 11px; }
+
+/* ============================================================
+   5. 牌桌中心（经典印刷 + 牌桌内凹感）
+   ============================================================ */
+.board-center {
+  position: relative;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: clamp(8px, 2.2vw, 18px);
+  text-align: center;
+  border-radius: var(--radius-sm);
+  background:
+    radial-gradient(130% 100% at 50% 0%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 58%),
+    linear-gradient(160deg,
+      color-mix(in srgb, var(--board-lawn) 6%, var(--board-face)) 0%,
+      color-mix(in srgb, var(--board-lawn) 18%, var(--board-face)) 100%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--board-ink) 12%, transparent),
+    inset 0 3px 18px color-mix(in srgb, var(--board-ink) 13%, transparent),
+    inset 0 -20px 30px color-mix(in srgb, var(--board-lawn) 9%, transparent);
+  color: var(--board-ink);
+  user-select: none;
+  pointer-events: none;
+}
+/* 牌桌中心的虚线压印圈 */
+.board-center::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 6px;
+  border: 1px dashed color-mix(in srgb, var(--board-ink) 14%, transparent);
+  pointer-events: none;
+}
+.board-center > * { position: relative; z-index: 1; }
+.bc-logo {
+  font-family: 'Arial Black', 'Arial Bold', Impact, sans-serif;
+  font-size: clamp(17px, 3.4vw, 30px);
+  font-weight: 900;
+  letter-spacing: clamp(1px, 0.4vw, 3px);
+  color: #c0392b;
+  text-shadow: 1px 1px 0 var(--board-face), 2px 3px 5px rgba(0, 0, 0, 0.18);
+}
+.bc-sub {
+  font-size: 10.5px;
+  color: var(--board-ink-soft);
+  letter-spacing: clamp(3px, 1vw, 8px);
+  margin-top: -3px;
+}
+.bc-dice { font-size: clamp(16px, 2.6vw, 24px); margin-top: 4px; }
+.bc-dice b { color: #c0392b; font-size: 1.1em; font-variant-numeric: tabular-nums; }
+.bc-turn {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--board-ink);
+  max-width: 95%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bc-round { font-size: 11px; color: var(--board-ink-soft); }
+.bc-jackpot {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #8a6117;
+  background: linear-gradient(180deg, rgba(255, 213, 79, 0.28), rgba(255, 171, 64, 0.16));
+  border: 1.5px dashed #c9a227;
+  border-radius: var(--radius-pill);
+  padding: 2px 12px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7), inset 0 0 8px rgba(201, 162, 39, 0.22);
+}
+
+/* ============================================================
+   6. 回合横幅 / 缩放控件（玻璃外围）
+   ============================================================ */
+.turn-banner {
+  position: relative;
+  z-index: 2;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 6px 18px 6px 6px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-warning));
+  box-shadow:
+    var(--shadow-lg),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 0 0 1px var(--glass-stroke);
+}
+.turn-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--board-face);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+}
+.turn-text {
+  color: var(--on-accent);
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.board-controls {
+  position: absolute;
+  bottom: -48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
+  display: flex;
+  gap: var(--space-2);
+  padding: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--glass-2);
+  border: 1px solid var(--glass-stroke);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 var(--glass-edge-top);
+  backdrop-filter: blur(var(--blur-panel)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--blur-panel)) saturate(150%);
+}
+.zoom-btn { width: 32px; height: 32px; }
+
+/* ============================================================
+   7. 骰子浮层
+   ============================================================ */
+.dice-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 26;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  background: var(--scrim);
+  backdrop-filter: blur(var(--blur-modal)) saturate(120%);
+  -webkit-backdrop-filter: blur(var(--blur-modal)) saturate(120%);
+}
+.dice-popup {
+  position: relative;
+  padding: 22px 32px;
+  text-align: center;
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--scrim) 45%, transparent), color-mix(in srgb, var(--scrim) 75%, transparent)),
+    var(--glass-3);
+  border: 1px solid var(--glass-stroke);
+  box-shadow: var(--shadow-xl), inset 0 1px 0 var(--glass-edge-top);
+  backdrop-filter: blur(var(--blur-wide)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur-wide)) saturate(160%);
+}
+.dice-header {
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 16px;
+}
+.dice-animation {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin-bottom: 12px;
+  perspective: 420px;
+}
+.die-3d {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(160deg, #ffffff 0%, #eef1f8 62%, #d8dee9 100%);
+  border: 1px solid rgba(20, 26, 44, 0.14);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42), inset 0 2px 0 rgba(255, 255, 255, 0.95), inset 0 -4px 8px rgba(20, 26, 44, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  transform-style: preserve-3d;
+  animation: diceRoll 0.8s ease-in-out infinite;
+}
+.die-3d:nth-child(2) { animation-delay: 0.1s; }
+@keyframes diceRoll {
+  0%, 100% { transform: rotateX(0) rotateY(0); }
+  25% { transform: rotateX(180deg) rotateY(0); }
+  50% { transform: rotateX(0) rotateY(180deg); }
+  75% { transform: rotateX(360deg) rotateY(180deg); }
+}
+.dice-result { color: var(--accent-warning); font-size: 18px; font-weight: 700; }
+
+/* ============================================================
+   8. 抽卡遮罩
+   ============================================================ */
+.card-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  background: var(--scrim);
+  backdrop-filter: blur(var(--blur-modal)) saturate(120%);
+  -webkit-backdrop-filter: blur(var(--blur-modal)) saturate(120%);
+}
+.drawn-card {
+  width: min(300px, 82%);
+  padding: 26px 22px;
+  text-align: center;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  box-shadow:
+    var(--shadow-xl),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -14px 24px rgba(0, 0, 0, 0.12);
+  animation: cardIn 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+/* 卡面颜色是机会/宝箱的语义识别色，压在浅色棋盘上故不跟随主题 */
+.card-overlay.chance .drawn-card { background: linear-gradient(150deg, #ffb74d, #f57c00); color: #3e2723; }
+.card-overlay.chest .drawn-card { background: linear-gradient(150deg, #81c784, #2e7d32); color: #e8f5e9; }
+.dc-icon { font-size: 46px; line-height: 1; }
+.dc-type { font-size: 13px; font-weight: 900; letter-spacing: 6px; margin: 8px 0 12px; opacity: 0.85; }
+.dc-text { font-size: 16px; font-weight: 700; line-height: 1.55; }
+@keyframes cardIn {
+  0% { transform: translateY(44px) rotate(6deg) scale(0.7); opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+
+/* ============================================================
+   9. 拍卖浮层（棋盘之上、卡片遮罩之下）
+   ============================================================ */
+.auction-panel {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 22;
+  width: min(420px, 92%);
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--scrim) 40%, transparent), color-mix(in srgb, var(--scrim) 72%, transparent)),
+    var(--glass-3);
+  border: 1px solid var(--accent-warning);
+  box-shadow:
+    var(--shadow-xl),
+    0 0 0 4px color-mix(in srgb, var(--accent-warning) 16%, transparent),
+    inset 0 1px 0 var(--glass-edge-top);
+  backdrop-filter: blur(var(--blur-modal)) saturate(165%);
+  -webkit-backdrop-filter: blur(var(--blur-modal)) saturate(165%);
+}
+.ap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--on-accent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-gold) 80%, #000 6%), var(--accent-warning));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+.ap-title b { color: inherit; }
+.ap-body { display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
+.ap-bid { font-size: 14px; color: var(--text-primary); }
+.ap-bid b { color: var(--accent-warning); font-size: 16px; font-variant-numeric: tabular-nums; }
+.ap-bidder { font-size: 12px; color: var(--text-tertiary); margin-left: 4px; }
+.ap-timer {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--accent-warning);
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+  text-align: right;
+}
+.ap-actions { display: flex; gap: 6px; }
+.auction-panel.urgent {
+  border-color: var(--accent-danger);
+  box-shadow: var(--shadow-xl), inset 0 1px 0 var(--glass-edge-top);
+  animation: aucUrgent 0.6s infinite;
+}
+.auction-panel.urgent .ap-timer { color: var(--accent-danger); }
+@keyframes aucUrgent {
+  0%, 100% { box-shadow: var(--shadow-xl), 0 0 0 0 color-mix(in srgb, var(--accent-danger) 42%, transparent); }
+  50% { box-shadow: var(--shadow-xl), 0 0 18px 4px color-mix(in srgb, var(--accent-danger) 60%, transparent); }
+}
+
+/* ============================================================
+   10. 棋子层（left/top/transition-duration 由 JS 行内控制）
+   ============================================================ */
+.token-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+.gtoken {
+  position: absolute;
+  width: 4.4%;
+  height: 4.4%;
+  min-width: 15px;
+  min-height: 15px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(8px, 1.5vw, 12px);
+  line-height: 1;
+  color: #fff;
+  /* 底色为 JS 注入的任意玩家色：保留白字 + 深色描边投影，
+     在亮绿/橙等浅色上也有稳定对比（不随主题翻转） */
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.65), 0 1px 1px rgba(0, 0, 0, 0.5);
+  border: 1.5px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.42), inset 0 1px 1px rgba(255, 255, 255, 0.5);
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 5;
+  transition: left 0.55s cubic-bezier(0.35, 0.9, 0.35, 1), top 0.55s cubic-bezier(0.35, 0.9, 0.35, 1);
+}
+.gtoken.me {
+  border: 2px solid var(--accent-gold);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-gold) 80%, transparent), 0 2px 5px rgba(0, 0, 0, 0.4);
+  z-index: 7;
+}
+
+/* ============================================================
+   11. 格子语义闪光（压在浅色棋盘上，金色/橙色为识别色）
+   ============================================================ */
+.cell-flash { animation: cellFlash 1.6s ease-out; z-index: 3; }
+@keyframes cellFlash {
+  0% { box-shadow: 0 0 0 3px var(--accent-gold), 0 0 18px 6px rgba(255, 213, 79, 0.65); }
+  100% { box-shadow: none; }
+}
+.cell-gold { animation: cellGold 1.8s ease-out; z-index: 3; }
+@keyframes cellGold {
+  0% { box-shadow: 0 0 0 3px var(--accent-gold), 0 0 22px 8px rgba(255, 213, 79, 0.8); background-color: #fff8dc; }
+  100% { box-shadow: none; }
+}
+.cell-auction { animation: cellAuctionPulse 1.2s infinite; z-index: 4; }
+@keyframes cellAuctionPulse {
+  0%, 100% { box-shadow: 0 0 0 2px var(--accent-warning), 0 0 10px 2px rgba(255, 152, 0, 0.5); }
+  50% { box-shadow: 0 0 0 2px var(--accent-warning), 0 0 18px 6px rgba(255, 152, 0, 0.85); }
+}
+.cell.monopoly-cell {
+  box-shadow:
+    inset 0 0 0 2px var(--mono-color, #ffd54f),
+    inset 0 0 10px color-mix(in srgb, var(--mono-color, #ffd54f) 30%, transparent);
+}
+
+/* ============================================================
+   12. 金额飘字
+   ============================================================ */
+.money-float-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 28;
+  pointer-events: none;
+  overflow: hidden;
+}
+.money-float {
+  position: absolute;
+  top: 34%;
+  font-size: clamp(18px, 3vw, 26px);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  -webkit-text-stroke: 0.7px color-mix(in srgb, var(--board-ink) 45%, transparent);
+  text-shadow:
+    0 1px 0 var(--board-face),
+    1px 0 0 var(--board-face),
+    0 3px 12px var(--board-chip);
+  animation: moneyUp 1.25s ease-out forwards;
+}
+/* 飘字永远浮在浅色棋盘上，颜色向深校准（浅色主题 accent 在白格上偏淡） */
+.money-float.gain { color: color-mix(in srgb, var(--accent-success) 78%, #06330f); }
+.money-float.lose { color: color-mix(in srgb, var(--accent-danger) 82%, #450a0a); }
+@keyframes moneyUp {
+  0% { transform: translateY(0) scale(0.7); opacity: 0; }
+  15% { transform: translateY(-8px) scale(1.1); opacity: 1; }
+  100% { transform: translateY(-70px) scale(1); opacity: 0; }
+}
+
+/* ============================================================
+   13. 移动端（覆盖 panels.css 中的棋盘相关规则）
+   ============================================================ */
+@media (max-width: 768px) {
+  .board-section {
+    padding: 10px 6px 52px;
+    min-height: 0;
+    border-radius: var(--radius-md);
+  }
+  .board-container,
+  .board-wrapper { max-width: 100%; }
+  .board {
+    gap: 1px;
+    padding: 2px;
+    border-width: 6px;
+    border-radius: var(--radius-xs);
+  }
+  .board-controls { bottom: -42px; padding: 4px; }
+  /* 覆盖 controls.css .btn-icon 同特异性规则，保证移动端 44px 触控尺寸 */
+  .board-controls .zoom-btn { width: 44px; height: 44px; }
+  .cell { padding: 3px 2px; }
+  .cell .cell-name { font-size: 9px; }
+  .cell .cell-price { font-size: 8px; }
+  .color-strip.strip-top,
+  .color-strip.strip-bottom { height: 6px; }
+  .color-strip.strip-left,
+  .color-strip.strip-right { width: 6px; }
+  .auction-panel { top: 8px; width: min(420px, 95%); }
+  .ap-body { flex-wrap: wrap; gap: 6px 10px; }
+  .turn-banner { padding: 5px 14px 5px 5px; margin-bottom: 10px; max-width: 96%; }
+  .turn-text { font-size: 12.5px; }
+  .bc-sub { letter-spacing: 3px; }
+}
+
+/* ≤420px（iPhone 竖屏）：棋盘占满可用宽度，字格可读 */
+@media (max-width: 420px) {
+  .board-section { padding: 8px 2px 50px; }
+  .board { border-width: 5px; }
+  .cell { padding: 2px 1px; }
+  .cell:has(> .strip-top) { padding-top: 8px; }
+  .cell:has(> .strip-bottom) { padding-bottom: 8px; }
+  .cell:has(> .strip-left) { padding-left: 8px; }
+  .cell:has(> .strip-right) { padding-right: 8px; }
+  .cell .cell-name { font-size: 8.5px; }
+  .color-strip.strip-top,
+  .color-strip.strip-bottom { height: 5px; }
+  .color-strip.strip-left,
+  .color-strip.strip-right { width: 5px; }
+  .turn-banner { margin-bottom: 8px; }
+  /* 长昵称回合条：省略号兜底，防止撑破横幅造成横向溢出 */
+  .turn-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* ============================================================
+   14. 横屏矮视口（orientation: landscape + max-height: 520px）
+   棋盘为 1:1 正方形（aspect-ratio），尺寸由 .board-wrapper 的
+   max-width 决定 → 用「视口高度 − 顶栏/回合条/缩放控件」收敛，
+   保证一屏放下，宽屏侧不受影响
+   ============================================================ */
+@media (orientation: landscape) and (max-height: 520px) {
+  .board-section {
+    min-height: 0;
+    padding: 6px 8px 46px;
+    overflow: hidden;
+  }
+  .board-container { max-width: 100%; }
+  .board-wrapper {
+    /* 150px ≈ 顶栏 + 回合横幅 + 托盘内边距 + 缩放控件带 */
+    max-width: min(580px, calc(100vh - 150px));
+    margin-inline: auto;
+  }
+  .board {
+    gap: 1px;
+    padding: 2px;
+    border-width: 5px;
+    border-radius: var(--radius-xs);
+  }
+  .turn-banner { margin-bottom: 6px; padding: 3px 12px 3px 3px; gap: 6px; }
+  .turn-avatar { width: 22px; height: 22px; font-size: 12px; border-width: 1.5px; }
+  .turn-text { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+  .cell { padding: 2px 1px; }
+  .cell:has(> .strip-top) { padding-top: 7px; }
+  .cell:has(> .strip-bottom) { padding-bottom: 7px; }
+  .cell:has(> .strip-left) { padding-left: 7px; }
+  .cell:has(> .strip-right) { padding-right: 7px; }
+  .cell .cell-name { font-size: 7px; margin: 1px 0; }
+  .cell .cell-price { font-size: 6.5px; }
+  .cell .cell-icon { font-size: 9px; margin-top: 1px; }
+  .cell.casino .cell-icon { font-size: 9px; }
+  .color-strip.strip-top,
+  .color-strip.strip-bottom { height: 4px; }
+  .color-strip.strip-left,
+  .color-strip.strip-right { width: 4px; }
+
+  .board-center { gap: 2px; padding: 4px; }
+  .bc-logo { font-size: 13px; letter-spacing: 1px; }
+  .bc-sub { font-size: 7px; letter-spacing: 2px; margin-top: -1px; }
+  .bc-dice { font-size: 11px; margin-top: 1px; }
+  .bc-turn { font-size: 9.5px; }
+  .bc-round { font-size: 8.5px; }
+  .bc-jackpot { font-size: 8.5px; padding: 1px 8px; margin-top: 1px; border-width: 1px; }
+
+  .board-controls { bottom: -40px; padding: 3px; gap: 4px; }
+  .board-controls .zoom-btn { width: 30px; height: 30px; font-size: 11px; }
+
+  .auction-panel { top: 6px; width: min(380px, 94%); }
+  .ap-body { flex-wrap: wrap; gap: 4px 10px; padding: 6px 10px; }
+  .ap-timer { font-size: 16px; }
+
+  .dice-popup { padding: 12px 22px; }
+  .dice-header { margin-bottom: 8px; font-size: 11px; }
+  .die-3d { width: 46px; height: 46px; font-size: 26px; }
+  .dice-animation { gap: 10px; margin-bottom: 8px; }
+  .dice-result { font-size: 15px; }
+
+  .drawn-card { width: min(280px, 78%); padding: 14px 16px; }
+  .dc-icon { font-size: 28px; }
+  .dc-type { font-size: 11px; letter-spacing: 4px; margin: 4px 0 8px; }
+  .dc-text { font-size: 13px; line-height: 1.45; }
+
+  .money-float { font-size: 16px; }
+}
+
+/* 更矮一档（≤420px，如 844x390）：再让出控件带高度 */
+@media (orientation: landscape) and (max-height: 420px) {
+  .board-section { padding: 4px 6px 42px; }
+  .board-wrapper { max-width: min(580px, calc(100vh - 138px)); }
+  .turn-banner { margin-bottom: 4px; }
+  .cell .cell-name { font-size: 6.5px; -webkit-line-clamp: 1; }
+  .board-controls { bottom: -36px; }
+}

@@ -2,18 +2,39 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
-  <meta name="theme-color" content="#1a1a2e"/>
+  <meta name="theme-color" content="#070b1c"/>
   <link rel="manifest" href="manifest.json"/>
   <link rel="icon" href="icon.svg" type="image/svg+xml"/>
+  <link rel="apple-touch-icon" href="icon.svg"/>
   <title>大富翁在线 - Monopoly Online</title>
-  <link rel="stylesheet" href="style.css?v=2182"/>
+  <script>
+    /* 首屏前置主题，避免深色→浅色闪烁；?theme/?glass 可覆盖本地偏好 */
+    (function () {
+      var d = document.documentElement, q = location.search;
+      function pick(name, vals) {
+        var m = new RegExp('[?&]' + name + '=([a-z]+)').exec(q);
+        return m && vals.indexOf(m[1]) >= 0 ? m[1] : null;
+      }
+      var t = pick('theme', ['light', 'dark']) || (localStorage.getItem('monopoly_theme') === 'light' ? 'light' : 'dark');
+      var g = pick('glass', ['soft', 'off']) || localStorage.getItem('monopoly_glass') || 'full';
+      d.setAttribute('data-theme', t);
+      d.setAttribute('data-glass', g);
+    })();
+  </script>
+  <link rel="stylesheet" href="css/tokens.css?v=2370"/>
+  <link rel="stylesheet" href="css/base.css?v=2370"/>
+  <link rel="stylesheet" href="css/controls.css?v=2370"/>
+  <link rel="stylesheet" href="css/panels.css?v=2370"/>
+  <link rel="stylesheet" href="css/board.css?v=2370"/>
+  <link rel="stylesheet" href="css/lobby.css?v=2370"/>
 </head>
 <body>
+  <a class="skip-link" href="#mainContent">跳到主内容</a>
   <div id="app">
     <!-- Loading Screen -->
-    <div id="loading" class="loading-screen">
+    <div id="loading" class="loading-screen" role="status" aria-live="polite">
       <div class="loading-content">
         <div class="loading-dice">
           <div class="die"><span>🎲</span></div>
@@ -26,11 +47,15 @@
     </div>
 
     <!-- Lobby (Home) -->
-    <div id="lobby" class="lobby hidden">
+    <div id="lobby" class="lobby hidden" tabindex="-1">
       <div class="lobby-card">
         <div class="lobby-head">
           <h1 class="logo">🎲 大富翁在线</h1>
-          <span class="version" id="verLabel">v2.21</span>
+          <span class="version" >v2.37.0</span>
+          <div class="lobby-head-tools">
+            <button id="themeBtnLobby" class="btn btn-icon btn-glass" aria-label="切换主题" title="切换深浅主题">🌗</button>
+            <button id="helpBtnLobby" class="btn btn-icon btn-glass" aria-label="帮助" aria-haspopup="dialog" title="玩法帮助">❓</button>
+          </div>
         </div>
         <p class="lobby-sub">和机器人或朋友来一局经典大富翁</p>
 
@@ -39,8 +64,8 @@
             <div class="lobby-section">
               <h2>👤 你的身份</h2>
               <div class="lobby-form">
-                <input type="text" id="lobbyName" placeholder="输入昵称" maxlength="16" autocomplete="off"/>
-                <div id="avatarGrid" class="avatar-grid"></div>
+                <input type="text" id="lobbyName" aria-label="你的昵称" placeholder="输入昵称" maxlength="16" autocomplete="off"/>
+                <div id="avatarGrid" class="avatar-grid" role="radiogroup" aria-label="选择头像"></div>
               </div>
             </div>
 
@@ -50,8 +75,8 @@
                 <button id="lobbyCreateBtn" class="btn btn-lg btn-primary">🏠 创建新房间</button>
                 <button id="lobbySoloBtn" class="btn btn-lg btn-warning" title="自动建房 + 3个机器人 + 开局">🤖 单人快速开局</button>
                 <div class="lobby-join">
-                  <input type="text" id="joinRoomInput" placeholder="输入房间号" maxlength="24"/>
-                  <input type="password" id="joinPwdInput" placeholder="密码（如有）" maxlength="12" style="max-width:140px;"/>
+                  <input type="text" id="joinRoomInput" aria-label="房间号" placeholder="输入房间号" maxlength="24"/>
+                  <input type="password" id="joinPwdInput" aria-label="房间密码（如有）" placeholder="密码（如有）" maxlength="12" style="max-width:140px;"/>
                   <button id="joinRoomBtn" class="btn btn-lg btn-success">加入</button>
                 </div>
               </div>
@@ -85,17 +110,19 @@
       <!-- Header -->
       <header class="app-header">
         <div class="header-left">
-          <button id="backBtn" class="btn btn-icon" aria-label="返回大厅" title="返回大厅">🏠</button>
+          <button id="backBtn" class="btn btn-icon btn-glass" aria-label="返回大厅" title="返回大厅">🏠</button>
           <h1 class="logo">大富翁在线</h1>
-          <span class="version" id="verLabel">v2.21</span>
+          <span class="version" >v2.37.0</span>
         </div>
         <div class="header-center">
-          <div class="room-selector">
+          <div class="room-chip">
             <span class="room-label" id="roomLabel">房间: -</span>
             <button class="btn btn-sm btn-ghost" id="inviteBtn" title="复制邀请链接，朋友打开直接进房" style="display:none;">📋 邀请</button>
-            <button class="btn btn-sm btn-ghost" id="chartBtn" title="净资产趋势" style="display:none;">📈 趋势</button>
-            <button class="btn btn-sm btn-ghost" id="overviewBtn" title="地产总览" style="display:none;">📋 总览</button>
-            <button class="btn btn-sm btn-ghost" id="replayBtn" title="逐轮回看棋盘" style="display:none;">🎥 回放</button>
+          </div>
+          <div class="app-toolbar" id="appToolbar">
+            <button class="btn btn-sm btn-ghost tool-btn" id="chartBtn" aria-haspopup="dialog" title="净资产趋势" style="display:none;">📈 趋势</button>
+            <button class="btn btn-sm btn-ghost tool-btn" id="overviewBtn" aria-haspopup="dialog" title="地产总览" style="display:none;">📋 总览</button>
+            <button class="btn btn-sm btn-ghost tool-btn" id="replayBtn" title="逐轮回看棋盘" style="display:none;">🎥 回放</button>
           </div>
         </div>
         <div class="header-right">
@@ -104,17 +131,18 @@
             <span class="my-name" id="myName"></span>
             <span class="my-money" id="myMoney">¥0</span>
           </div>
-          <button id="helpBtn" class="btn btn-icon" aria-label="帮助" title="帮助 (H)">❓</button>
-          <button id="settingsBtn" class="btn btn-icon" aria-label="设置" title="设置">⚙️</button>
+          <button id="themeBtn" class="btn btn-icon btn-glass" aria-label="切换主题" title="切换深浅主题 (⇧T)">🌗</button>
+          <button id="helpBtn" class="btn btn-icon btn-glass" aria-label="帮助" aria-haspopup="dialog" title="帮助 (H)">❓</button>
+          <button id="settingsBtn" class="btn btn-icon btn-glass" aria-label="设置" aria-haspopup="dialog" title="设置">⚙️</button>
         </div>
       </header>
 
       <!-- Main Layout -->
-      <main class="main-layout">
+      <main class="main-layout" id="mainContent" tabindex="-1">
         <!-- Left: Game Board -->
         <section class="board-section" id="boardSection">
           <!-- Current Turn Indicator (above board, never overlaps) -->
-          <div id="turnBanner" class="turn-banner hidden" aria-live="assertive">
+          <div id="turnBanner" class="turn-banner hidden" aria-live="polite">
             <span class="turn-avatar" id="turnAvatar"></span>
             <span class="turn-text" id="turnText"></span>
           </div>
@@ -126,13 +154,13 @@
               </div>
             </div>
             <div class="board-controls">
-              <button class="btn btn-icon zoom-btn" id="zoomIn" aria-label="放大" title="放大">🔍+</button>
-              <button class="btn btn-icon zoom-btn" id="zoomOut" aria-label="缩小" title="缩小">🔍-</button>
-              <button class="btn btn-icon zoom-btn" id="zoomReset" aria-label="重置" title="重置">⌂</button>
+              <button class="btn btn-icon btn-glass zoom-btn" id="zoomIn" aria-label="放大" title="放大">＋</button>
+              <button class="btn btn-icon btn-glass zoom-btn" id="zoomOut" aria-label="缩小" title="缩小">－</button>
+              <button class="btn btn-icon btn-glass zoom-btn" id="zoomReset" aria-label="重置" title="重置">⌂</button>
             </div>
           </div>
 
-          <div id="moneyFloatLayer" class="money-float-layer"></div>
+          <div id="moneyFloatLayer" class="money-float-layer" role="status" aria-live="polite" aria-label="金钱变动"></div>
 
           <!-- Drawn Card Overlay -->
           <div id="cardOverlay" class="card-overlay hidden" role="status" aria-live="polite">
@@ -144,10 +172,10 @@
           </div>
 
           <!-- Auction Panel -->
-          <div id="auctionPanel" class="auction-panel hidden">
+          <div id="auctionPanel" class="auction-panel hidden" role="region" aria-label="地产拍卖">
             <div class="ap-head">
               <span class="ap-title">🔨 拍卖中：<b id="apName"></b></span>
-              <button class="btn btn-sm btn-ghost" id="apHideBtn" title="收起">收起</button>
+              <button class="btn btn-sm btn-ghost" id="apHideBtn" aria-expanded="true" aria-controls="auctionPanel" aria-label="收起拍卖面板" title="收起">收起</button>
             </div>
             <div class="ap-body">
               <div class="ap-bid">当前最高 <b id="apTopBid">¥0</b><span id="apTopBidder" class="ap-bidder"></span></div>
@@ -182,77 +210,75 @@
             <div class="panel-header">
               <h2>👥 玩家</h2>
               <div class="panel-header-btns">
-                <button class="btn btn-sm btn-ghost" id="tradeBtn" title="发起交易" disabled>🤝 交易</button>
-                <button class="btn btn-sm btn-danger" id="exitBtn" title="退出房间，席位由机器人接管">🚪 退出</button>
+                <button class="btn btn-sm btn-ghost" id="tradeBtn" aria-haspopup="dialog" title="发起交易" disabled>🤝 交易</button>
+                <button class="btn btn-sm btn-danger" id="exitBtn" aria-haspopup="dialog" title="退出房间，席位由机器人接管">🚪 退出</button>
               </div>
             </div>
-            <div id="playersList" class="players-list"></div>
+            <div id="playersList" class="players-list" role="group" aria-label="玩家列表"></div>
           </div>
 
           <!-- Action Panel -->
           <div class="panel-card action-panel">
-            <h2>🎮 操作</h2>
+            <div class="panel-header">
+              <h2>🎮 操作</h2>
+              <span class="turn-timer" id="turnTimer" aria-live="off"></span>
+            </div>
+            <div class="action-hint" id="actionHint" aria-live="polite"></div>
             <div class="action-buttons" id="actionButtons">
-              <div class="round-limit-row" id="roundLimitRow" style="display:none;">
-                <label for="maxRoundsSel">⏱ 回合上限</label>
-                <select id="maxRoundsSel">
-                  <option value="0">不限（破产定胜负）</option>
-                  <option value="30">30 回合（快速局）</option>
-                  <option value="50">50 回合</option>
-                  <option value="80">80 回合</option>
-                </select>
+              <div class="setup-card" id="roomSetupCard">
+                <div class="round-limit-row" id="roundLimitRow" style="display:none;">
+                  <label for="maxRoundsSel">⏱ 回合上限</label>
+                  <select id="maxRoundsSel">
+                    <option value="0">不限（破产定胜负）</option>
+                    <option value="30">30 回合（快速局）</option>
+                    <option value="50">50 回合</option>
+                    <option value="80">80 回合</option>
+                  </select>
+                </div>
+                <div class="round-limit-row room-settings" id="roomSettingsRow" style="display:none;">
+                  <label for="mapSel">🗺 地图</label>
+                  <select id="mapSel">
+                    <option value="classic">经典版</option>
+                    <option value="china">中国城市版</option>
+                    <option value="wulin">武林风云版（快速）</option>
+                  </select>
+                  <label for="startMoneySel">💰 资金</label>
+                  <select id="startMoneySel">
+                    <option value="8000">¥8,000</option>
+                    <option value="10000">¥10,000</option>
+                    <option value="15000" selected>¥15,000</option>
+                    <option value="20000">¥20,000</option>
+                    <option value="30000">¥30,000</option>
+                  </select>
+                  <label for="turnTimeSel">⏱ 回合限时</label>
+                  <select id="turnTimeSel">
+                    <option value="30000">30 秒</option>
+                    <option value="60000">1 分钟</option>
+                    <option value="120000" selected>2 分钟</option>
+                  </select>
+                  <label class="chk"><input type="checkbox" id="teamModeChk"/>⚔️团队</label>
+                  <label class="chk"><input type="checkbox" id="jackpotChk" checked/>🎁奖池</label>
+                  <label class="chk"><input type="checkbox" id="auctionChk" checked/>🔨拍卖</label>
+                  <label for="botSpeedSel">🤖速度</label>
+                  <select id="botSpeedSel">
+                    <option value="1">正常</option>
+                    <option value="0.4">快速</option>
+                  </select>
+                </div>
+                <button class="btn btn-ghost btn-block" id="botBtn" aria-haspopup="dialog" style="display:none;">🤖 添加机器人（单人开局）</button>
               </div>
-              <div class="round-limit-row room-settings" id="roomSettingsRow" style="display:none;">
-                <label for="mapSel">🗺 地图</label>
-                <select id="mapSel">
-                  <option value="classic">经典版</option>
-                  <option value="china">中国城市版</option>
-                  <option value="wulin">武林风云版（快速）</option>
-                </select>
-                <label for="startMoneySel">💰 资金</label>
-                <select id="startMoneySel">
-                  <option value="8000">¥8,000</option>
-                  <option value="10000">¥10,000</option>
-                  <option value="15000" selected>¥15,000</option>
-                  <option value="20000">¥20,000</option>
-                  <option value="30000">¥30,000</option>
-                </select>
-                <label for="turnTimeSel">⏱ 回合限时</label>
-                <select id="turnTimeSel">
-                  <option value="30000">30 秒</option>
-                  <option value="60000">1 分钟</option>
-                  <option value="120000" selected>2 分钟</option>
-                </select>
-                <label class="chk"><input type="checkbox" id="teamModeChk"/>⚔️团队</label>
-                <label class="chk"><input type="checkbox" id="teamModeChk"/>⚔️团队</label>
-                <label class="chk"><input type="checkbox" id="jackpotChk" checked/>🎁奖池</label>
-                <label class="chk"><input type="checkbox" id="auctionChk" checked/>🔨拍卖</label>
-                <label for="botSpeedSel">🤖速度</label>
-                <select id="botSpeedSel">
-                  <option value="1">正常</option>
-                  <option value="0.4">快速</option>
-                </select>
-                <label for="botSpeedSel">🤖速度</label>
-                <select id="botSpeedSel">
-                  <option value="1">正常</option>
-                  <option value="0.4">快速</option>
-                </select>
-              </div>
-              <button class="btn btn-lg btn-primary" id="startBtn" disabled>▶ 开始游戏</button>
-              <button class="btn btn-lg btn-success" id="rollBtn" disabled>
-                <span class="btn-icon">🎲</span>
+              <button class="btn btn-lg btn-primary btn-block btn-hero" id="startBtn" disabled>▶ 开始游戏</button>
+              <button class="btn btn-lg btn-success btn-block btn-hero" id="rollBtn" disabled>
+                <span class="btn-emoji">🎲</span>
                 <span>掷骰子</span>
               </button>
               <button class="btn btn-lg btn-warning" id="bailBtn" disabled style="display:none;">💰 保释 ¥1000</button>
               <button class="btn btn-lg btn-warning" id="buyBtn" disabled>💰 购买</button>
-              <button class="btn btn-lg btn-info" id="buildBtn" disabled>🏗 建设</button>
-              <button class="btn btn-lg btn-secondary" id="mortgageBtn" disabled>🏦 抵押</button>
-              <button class="btn btn-lg btn-info" id="delegateBtn" style="display:none;">🕹 托管</button>
-              <button class="btn btn-lg btn-danger" id="endTurnBtn" disabled>⏭ 结束回合</button>
-              <button class="btn btn-lg btn-primary" id="botBtn" style="grid-column:1 / -1;">🤖 添加机器人（单人开局）</button>
+              <button class="btn btn-lg btn-info" id="buildBtn" disabled aria-haspopup="dialog">🏗 建设</button>
+              <button class="btn btn-lg btn-secondary" id="mortgageBtn" disabled aria-haspopup="dialog">🏦 抵押</button>
+              <button class="btn btn-lg btn-secondary" id="delegateBtn" style="display:none;">🕹 托管</button>
+              <button class="btn btn-lg btn-danger btn-block btn-endturn" id="endTurnBtn" disabled>⏭ 结束回合</button>
             </div>
-            <div class="action-hint" id="actionHint"></div>
-            <div class="turn-timer" id="turnTimer"></div>
             <div class="quick-stats" id="quickStats"></div>
           </div>
 
@@ -260,7 +286,7 @@
           <div class="panel-card chat-panel">
             <div class="panel-header">
               <h2>💬 消息</h2>
-              <select id="logFilter" class="log-filter">
+              <select id="logFilter" class="log-filter" aria-label="筛选消息类型">
                 <option value="all">全部</option>
                 <option value="game">游戏</option>
                 <option value="chat">聊天</option>
@@ -268,16 +294,16 @@
               </select>
             </div>
             <div id="log" class="log-container" role="log" aria-live="polite"></div>
-            <div class="quick-reactions" id="quickReactions">
-              <button data-emoji="👍" title="赞">👍</button>
-              <button data-emoji="😂" title="笑">😂</button>
-              <button data-emoji="😱" title="惊">😱</button>
-              <button data-emoji="🤑" title="发钱">🤑</button>
-              <button data-emoji="🔥" title="精彩">🔥</button>
-              <button data-emoji="😭" title="惨">😭</button>
+            <div class="quick-reactions" id="quickReactions" role="group" aria-label="快捷表情">
+              <button data-emoji="👍" aria-label="发送表情：赞" title="赞">👍</button>
+              <button data-emoji="😂" aria-label="发送表情：笑" title="笑">😂</button>
+              <button data-emoji="😱" aria-label="发送表情：惊" title="惊">😱</button>
+              <button data-emoji="🤑" aria-label="发送表情：发钱" title="发钱">🤑</button>
+              <button data-emoji="🔥" aria-label="发送表情：精彩" title="精彩">🔥</button>
+              <button data-emoji="😭" aria-label="发送表情：惨" title="惨">😭</button>
             </div>
             <div class="chat-input-area">
-              <input type="text" id="chatInput" placeholder="输入消息..." maxlength="300" autocomplete="off"/>
+              <input type="text" id="chatInput" aria-label="聊天输入框" placeholder="输入消息..." maxlength="300" autocomplete="off"/>
               <button class="btn btn-primary" id="sendChatBtn">发送</button>
             </div>
           </div>
@@ -292,7 +318,7 @@
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>
   </div>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="app.js?v=2180"></script>
+  <script defer src="/socket.io/socket.io.js"></script>
+  <script defer src="app.js?v=2370"></script>
 </body>
 </html>
