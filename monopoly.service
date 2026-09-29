@@ -1,0 +1,84 @@
+# =====================================================================
+# 大富翁在线 —— systemd 服务模板（monopoly.service）
+#
+# 适用：腾讯云 CentOS 7.9（systemd v219 语法兼容）
+# 说明：这是一个【模板】文件，不是自动安装脚本。
+#       部署时把它复制到 /usr/lib/systemd/system/ 并手动启用启动即可。
+#
+# 两种启动方式（任选其一，默认直跑 node，PM2 方案见下方注释）：
+#   A) 直接 node：ExecStart 用 /usr/local/bin/node（请按实际 node 路径调整）
+#   B) 经 PM2：ExecStart 用 pm2 start /opt/monopoly/ecosystem.config.js（看注释块）
+#
+# 部署步骤（CentOS 7）：
+#   1) 将代码放到 /opt/monopoly（本模板与 server.js 同级）
+#   2) 复制本模板到系统目录：
+#        cp /opt/monopoly/monopoly.service /etc/systemd/system/monopoly.service
+#   3) （直跑方式需手动写 node 绝对路径；PM2 方式请先 `npm i -g pm2`）
+#   4) 重载 systemd 使新 unit 生效：
+#        systemctl daemon-reload
+#   5) 启动并设为开机自启：
+#        systemctl start monopoly
+#        systemctl enable monopoly
+#   6) 查看状态与日志：
+#        systemctl status monopoly
+#        journalctl -u monopoly -f
+#   7) 重启/停止：
+#        systemctl restart monopoly
+#        systemctl stop monopoly
+# =====================================================================
+
+[Unit]
+# 服务描述（systemctl status 时可见）
+Description=Monopoly Online Server (大富翁在线)
+
+# 本服务依赖网络就绪后再启动；CentOS 7 用 After 声明顺序，不强制 wait。
+After=network.target
+
+# 若服务异常退出，systemd 会按 [Service] 里的 Restart 策略自动拉起。
+
+[Service]
+# 工作目录：应用代码根目录（也是数据目录 data/ 的所在位置）
+WorkingDirectory=/opt/monopoly
+
+# 运行用户：腾讯云 root。改为普通用户更安全，但需保证该用户对 data/ 有写权限。
+User=root
+
+# 进程管理：simple 表示由本 ExecStart 直接托管的应用进程
+Type=simple
+
+# ---- 方式 A（默认）：直接用 node 跑 server.js ----
+# 注意：CentOS7 上 node 通常装在 /usr/bin/node 或 /usr/local/bin/node，请按实际路径调整。
+#   可用 `which node` 或 `readlink -f $(which node)` 确认。
+ExecStart=/usr/bin/node /opt/monopoly/server.js
+
+# ---- 方式 B：通过 PM2 托管（若已装 pm2，改用下面这行并注释掉方式 A）----
+# 环境变量（端口等由 /opt/monopoly/ecosystem.config.js 传入，无需在此重复设置）
+# Environment=NODE_ENV=production
+# Environment=PORT=8081
+# ExecStart=/usr/bin/env
+#   pm2 start /opt/monopoly/ecosystem.config.js --name monopoly
+# ExecReload=/usr/bin/env
+#   pm2 reload /opt/monopoly/ecosystem.config.js
+
+# 应用监听端口明细写在 environment / ecosystem 配置里，保持默认 8081。
+# 若想额外设置环境变量（systemd v219 支持 Environment= 单行），例如：
+# Environment=PORT=8081
+
+# 无论正常退出还是异常，只要进程结束都在 2 秒后尝试重启
+Restart=always
+# 等待进程实际退出/返回为 down 的超时时间
+TimeoutStopSec=10
+
+# 不需要自动注入的目录（默认可去掉，避免权限影响）
+NoNewPrivileges=false
+
+# 标准输出/错误日志
+StandardOutput=journal
+StandardError=journal
+
+# systemd v219（CentOS 7）可用；若资源限制另有要求可自行调整
+# LimitNOFILE=65535
+
+[Install]
+# 在 multi-user（多用户/无图形）模式下开机自启
+WantedBy=multi-user.target
